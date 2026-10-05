@@ -1,5 +1,6 @@
-// runAnalyst: one Analyst query() over a window of evidence, under the workspace lock.
-import { query, type GCMessage, type SessionCosts } from "@open-gitagent/gitagent";
+// runAnalyst: one Analyst query() over a window of evidence, then the Skeptic on each new proposal,
+// one at a time, all under one hold of the workspace lock.
+import type { SessionCosts } from "@open-gitagent/gitagent";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +10,8 @@ import { AGENT_DIR, STORE_DIR } from "../paths";
 import { proposalStore } from "../store/proposals";
 import { readEvidenceTool } from "../tools/readEvidence";
 import { proposeRuleChangeTool, readRulebookTool } from "../tools/rulebook";
-import { createGuard } from "./hooks";
+import { runAgent, type OnEvent, type RunStatus } from "./run";
+import { skepticUnlocked, type SkepticResult } from "./skeptic";
 
 export const ANALYST_TOOLS = ["memory", "read_evidence", "read_rulebook", "propose_rule_change"];
 const MAX_TURNS = 10;
@@ -19,24 +21,24 @@ export interface AnalystOptions {
   window: Required<Window>;
   synthetic?: boolean;
   signal?: AbortSignal; // e.g. the HTTP request: client gone → stop paying for tokens
-  onEvent?: (m: GCMessage) => void;
+  onEvent?: OnEvent;
+  /** Run the Skeptic on each new proposal after the Analyst finishes (default true). */
+  critique?: boolean;
 }
 
 export interface AnalystResult {
   runId: string;
   proposalIds: string[];
-  status: "done" | "aborted" | "timeout" | "turn_limit" | "error";
+  status: RunStatus;
   error?: string;
   turns: number;
   costs: SessionCosts;
+  skeptic: SkepticResult[];
+  totalCostUsd: number;
 }
-
-const model = () => process.env.RULEBOOK_MODEL || "openai:gpt-4o-mini";
-const timeoutMs = () => Number(process.env.RULEBOOK_RUN_TIMEOUT_MS || 90_000);
 
 export function runAnalyst(opts: AnalystOptions): Promise<AnalystResult> {
   return withLock(async () => {
-    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
     const runId = randomUUID();
     const dir = join(AGENT_DIR, "agents", "analyst");
     const readRules = () => readFileSync(join(AGENT_DIR, "RULES.md"), "utf8");
@@ -44,16 +46,9 @@ export function runAnalyst(opts: AnalystOptions): Promise<AnalystResult> {
     const rows = filterEvidence(loadEvidence({ synthetic: opts.synthetic }), {}, opts.window);
     const store = proposalStore(STORE_DIR);
 
-    const ac = new AbortController();
-    const guard = createGuard({ agent: "analyst", agentDir: dir, allowedTools: ANALYST_TOOLS, maxTurns: MAX_TURNS, abortController: ac });
-    let timedOut = false;
-    const timer = setTimeout(() => ((timedOut = true), ac.abort()), timeoutMs());
-    const onClientAbort = () => ac.abort();
-    opts.signal?.addEventListener("abort", onClientAbort, { once: true });
-
-    const q = query({
+    const analyst = await runAgent({
+      agent: "analyst",
       dir,
-      model: model(),
       prompt: [
         `Evidence window: ${opts.window.from} to ${opts.window.to} (${rows.length} rows${opts.synthetic ? ", including synthetic rows" : ""}).`,
         "Steps:",
@@ -70,42 +65,41 @@ export function runAnalyst(opts: AnalystOptions): Promise<AnalystResult> {
       tools: [
         readEvidenceTool(() => rows),
         readRulebookTool(readRules),
-        proposeRuleChangeTool({ runId, rows, readRules, store, maxPerRun: MAX_PROPOSALS }),
+        proposeRuleChangeTool({ runId, rows, readRules, store, maxPerRun: MAX_PROPOSALS, window: opts.window, synthetic: opts.synthetic }),
       ],
       allowedTools: ANALYST_TOOLS,
-      hooks: { preToolUse: guard.preToolUse },
-      maxTurns: MAX_TURNS, // ignored by gitagent 2.2.0; the guard enforces it
-      abortController: ac,
+      maxTurns: MAX_TURNS,
+      signal: opts.signal,
+      onEvent: opts.onEvent,
     });
 
-    let error: string | undefined;
-    try {
-      for await (const m of q) {
-        guard.onMessage(m);
-        if (m.type === "system" && m.subtype === "error") error = m.content;
-        opts.onEvent?.(m);
+    const proposalIds = store.list().filter((p) => p.run_id === runId).map((p) => p.id);
+
+    // Sequential on purpose: one agent at a time on the workspace, and a predictable cost.
+    const skeptic: AnalystResult["skeptic"] = [];
+    if (opts.critique !== false) {
+      for (const id of proposalIds) {
+        if (opts.signal?.aborted) break;
+        try {
+          skeptic.push(await skepticUnlocked(id, { signal: opts.signal, onEvent: opts.onEvent }));
+        } catch (err) {
+          // Recorded on the proposal as critique_error; keep going with the next one.
+          skeptic.push({ proposalId: id, runId: "", status: "error", error: (err as Error).message, turns: 0, costs: emptyCosts() });
+        }
       }
-    } finally {
-      clearTimeout(timer);
-      opts.signal?.removeEventListener("abort", onClientAbort);
     }
 
-    const status: AnalystResult["status"] = timedOut
-      ? "timeout"
-      : opts.signal?.aborted
-        ? "aborted"
-        : guard.turns() >= MAX_TURNS && ac.signal.aborted
-          ? "turn_limit"
-          : error
-            ? "error"
-            : "done";
     return {
       runId,
-      proposalIds: store.list().filter((p) => p.run_id === runId).map((p) => p.id),
-      status,
-      ...(error ? { error } : {}),
-      turns: guard.turns(),
-      costs: q.costs(),
+      proposalIds,
+      status: analyst.status,
+      ...(analyst.error ? { error: analyst.error } : {}),
+      turns: analyst.turns,
+      costs: analyst.costs,
+      skeptic,
+      totalCostUsd: analyst.costs.totalCostUsd + skeptic.reduce((s, r) => s + r.costs.totalCostUsd, 0),
     };
   });
 }
+
+const emptyCosts = (): SessionCosts => ({ totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, totalRequests: 0, startTime: Date.now(), modelUsage: {} });

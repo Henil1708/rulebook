@@ -42,6 +42,8 @@ export interface ProposeContext {
   readRules: () => string;
   store: ProposalStore;
   maxPerRun: number;
+  window?: { from: string; to: string };
+  synthetic?: boolean;
 }
 
 /** Validate a proposal against the schema, the rulebook and the evidence, then store it as pending. */
@@ -71,6 +73,8 @@ export function propose(ctx: ProposeContext, args: unknown): Proposal {
 
   return ctx.store.add({
     run_id: ctx.runId,
+    ...(ctx.window ? { window: ctx.window } : {}),
+    ...(ctx.synthetic ? { synthetic: true } : {}),
     ...input,
     evidence_ids: [...new Set(input.evidence_ids)],
     check: { n: s.n, humanReplies: s.humanReplies, bounces: s.bounces },
