@@ -1,7 +1,7 @@
 // All git access for the workspace repo. execFile only (never a shell string), and every
 // write goes through one process-wide mutex shared with agent runs.
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 import { promisify } from "node:util";
 import { buildCommitMessage, parseTrailers, sanitiseMessage, type Trailers } from "./message";
@@ -39,6 +39,14 @@ export interface Commit {
   subject: string;
   body: string;
   trailers: Trailers;
+}
+
+export interface Change {
+  files: Record<string, string>;
+  message: string;
+  trailers?: Trailers;
+  /** Runs inside the lock right after the commit, e.g. to record the sha before anyone else can act. */
+  after?: (sha: string) => void | Promise<void>;
 }
 
 export interface BlameLine {
@@ -110,28 +118,40 @@ export class GitService {
     return this.git(["show", `${assertRef(ref)}:${assertRelPath(path)}`]);
   }
 
-  /** Write `files` (repo-relative path → content), stage them and commit with trailers. Returns the new sha. */
-  commit(files: Record<string, string>, message: string, trailers: Trailers = {}): Promise<string> {
+  /**
+   * Write `files` (repo-relative path → content), stage them and commit with trailers. Returns the new sha.
+   * Pass a function to build the change inside the lock, when it depends on the current repo state.
+   */
+  commit(
+    files: Record<string, string> | (() => Promise<Change> | Change),
+    message?: string,
+    trailers: Trailers = {},
+  ): Promise<string> {
     return withLock(async () => {
-      const paths = Object.keys(files).map(assertRelPath);
-      for (const p of paths) {
-        await mkdir(dirname(join(this.cwd, p)), { recursive: true });
-        await writeFile(join(this.cwd, p), files[p]);
-      }
-      await this.git(["add", "--", ...paths]);
-      await this.git(["commit", "-q", "-m", buildCommitMessage(message, trailers)]);
-      return this.head();
+      const change = typeof files === "function" ? await files() : { files, message: message ?? "", trailers };
+      return this.commitUnlocked(change);
     });
   }
 
-  /** Append one line to memory/MEMORY.md and commit it. Both text and message are sanitised. */
-  appendMemory(text: string, message: string): Promise<string> {
-    return withLock(async () => {
-      const path = "memory/MEMORY.md";
-      await appendFile(join(this.cwd, path), `- ${sanitiseMessage(text, 500)}\n`);
-      await this.git(["add", "--", path]);
-      await this.git(["commit", "-q", "-m", buildCommitMessage(sanitiseMessage(message))]);
-      return this.head();
+  private async commitUnlocked({ files, message, trailers = {}, after }: Change): Promise<string> {
+    const paths = Object.keys(files).map(assertRelPath);
+    for (const p of paths) {
+      await mkdir(dirname(join(this.cwd, p)), { recursive: true });
+      await writeFile(join(this.cwd, p), files[p]);
+    }
+    await this.git(["add", "--", ...paths]);
+    await this.git(["commit", "-q", "-m", buildCommitMessage(message, trailers)]);
+    const sha = await this.head();
+    await after?.(sha);
+    return sha;
+  }
+
+  /** Append one line to a memory file (default memory/MEMORY.md) and commit it. Both text and message are sanitised. */
+  appendMemory(text: string, message: string, path = "memory/MEMORY.md"): Promise<string> {
+    return this.commit(async () => {
+      const p = assertRelPath(path);
+      const current = await readFile(join(this.cwd, p), "utf8").catch(() => "");
+      return { files: { [p]: `${current}- ${sanitiseMessage(text, 500)}\n` }, message: sanitiseMessage(message) };
     });
   }
 
