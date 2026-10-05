@@ -1,6 +1,7 @@
 // Evidence: load, filter, slice stats. Pure functions apart from loadEvidence.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 
 export interface Evidence {
   id: string;
@@ -40,6 +41,20 @@ export interface Window {
   to?: string;
 }
 
+const Scalar = z.union([z.string(), z.boolean()]);
+const FieldFilterSchema = z.union([Scalar, z.array(Scalar), z.object({ not: z.union([Scalar, z.array(Scalar)]) }).strict()]);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Runtime + JSON schema for a Filter, shared by every tool that takes one. */
+export const FilterSchema = z
+  .object(Object.fromEntries(FILTER_FIELDS.map((f) => [f, FieldFilterSchema.optional()])))
+  .strict()
+  .describe(`Field filters, AND-ed. Each is a value, a list (any of), or {"not": value-or-list}. Example: {"market":{"not":"IN"},"inbox_type":"named_person"}`) as unknown as z.ZodType<Filter>;
+export const WindowSchema = z
+  .object({ from: z.string().regex(DATE).optional(), to: z.string().regex(DATE).optional() })
+  .strict()
+  .describe("Inclusive sent_at range, YYYY-MM-DD.");
+
 export const HUMAN_REPLY = new Set(["reply_rejection", "reply_positive", "reply_redirect"]);
 
 export function loadEvidence({ synthetic = false, dataDir = join(process.cwd(), "data") } = {}): Evidence[] {
@@ -51,8 +66,6 @@ export function loadEvidence({ synthetic = false, dataDir = join(process.cwd(), 
 export function isSend(row: Evidence): boolean {
   return row.sent_at !== null && row.outcome !== "pending" && row.outcome !== "inbound_contact";
 }
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Throws on unknown fields or bad dates, so a tool caller gets a clear error instead of a silent empty slice. */
 export function validateQuery(filter: Filter = {}, window: Window = {}): void {
