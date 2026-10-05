@@ -45,6 +45,7 @@ async function seenRuleIds(git: GitService, rules: string): Promise<string[]> {
   return [...parseRules(rules).map((r) => r.id), ...subjects.flatMap((s) => [...s.matchAll(/\b(R-\d{3,})\b/g)].map((m) => m[1]))];
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const short = (text: string, max = 90) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
 
 export async function acceptProposal({ git, store }: Deps, id: string, editedText?: string) {
@@ -73,7 +74,7 @@ export async function acceptProposal({ git, store }: Deps, id: string, editedTex
       Evidence: p.evidence_ids.join(", "),
       Slice: renderSlice(p.slice),
       N: String(p.check.n),
-      Metric: `${p.check.humanReplies} human replies, ${p.check.bounces} bounces`,
+      Metric: `${plural(p.check.humanReplies, "human reply", "human replies")}, ${plural(p.check.bounces, "bounce", "bounces")}`,
       "Proposed-By": "analyst",
       ...(editedText !== undefined && text !== p.rule_text ? { "Edited-By": "operator" } : {}),
       "Approved-By": "operator",
@@ -95,8 +96,9 @@ export async function acceptProposal({ git, store }: Deps, id: string, editedTex
 }
 
 export async function rejectProposal({ git, store }: Deps, id: string, reason: string) {
-  const clean = sanitiseMessage(reason, 200);
+  const clean = sanitiseMessage(reason, 200); // for the commit message only
   if (clean.length < 3) throw new ReviewError("a reason is required", 400);
+  const said = reason.replace(/\s+/g, " ").trim().slice(0, 500); // as the operator wrote it, on one line
   pending(store, id);
   let result!: Proposal;
 
@@ -104,13 +106,13 @@ export async function rejectProposal({ git, store }: Deps, id: string, reason: s
     const p = pending(store, id); // inside the lock: a concurrent accept/reject wins and this one stops before committing
     const what = `${p.op}${p.rule_id ? ` ${p.rule_id}` : ""}${p.rule_text ? `: ${p.rule_text}` : ""}`;
     // File content, not a command: flatten to one line (one memory entry per line) but keep characters like "@".
-    const line = `Rejected ${p.id} (${what}; slice ${renderSlice(p.slice)}, n=${p.check.n}). Reason: ${reason}`.replace(/\s+/g, " ").trim().slice(0, 800);
+    const line = `Rejected ${p.id} (${what}; slice ${renderSlice(p.slice)}, n=${p.check.n}). Reason: ${said}`.slice(0, 800);
     const current = await readFile(join(git.cwd, ANALYST_MEMORY_PATH), "utf8").catch(() => "");
     return {
       files: { [ANALYST_MEMORY_PATH]: `${current}- ${line}\n` },
       message: sanitiseMessage(`memory(analyst): rejected ${p.id} — ${clean}`, 200),
       after: (sha: string) => {
-        result = store.update(id, { status: "rejected", decision: { at: new Date().toISOString(), sha, reason: clean } });
+        result = store.update(id, { status: "rejected", decision: { at: new Date().toISOString(), sha, reason: said } });
       },
     };
   });

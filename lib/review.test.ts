@@ -70,7 +70,7 @@ describe("acceptProposal", () => {
 
   it("uses N and Metric from the server's check, not the model's claim", async () => {
     await acceptProposal(deps, add({ n: 999, metric: "amazing results", check: { n: 12, humanReplies: 1, bounces: 2 } }));
-    expect((await git.log())[0].trailers).toMatchObject({ N: "12", Metric: "1 human replies, 2 bounces" });
+    expect((await git.log())[0].trailers).toMatchObject({ N: "12", Metric: "1 human reply, 2 bounces" });
   });
 
   it("modify with operator-edited text: keeps the ID, records the edit", async () => {
@@ -141,7 +141,7 @@ describe("rejectProposal", () => {
     expect(memory).toBe(
       "- Rejected P-001 (modify R-002: Prefer careers@ over info@.; slice market!=IN & inbox_type=named_person, n=34). Reason: n=21 is too small; generic inboxes did better than baseline\n",
     );
-    expect(proposal).toMatchObject({ status: "rejected", decision: { sha, reason: "n21 is too small generic inboxes did better than baseline" } });
+    expect(proposal).toMatchObject({ status: "rejected", decision: { sha, reason: "n=21 is too small; generic inboxes did better than baseline" } });
   });
 
   it("appends, never overwrites", async () => {
