@@ -7,12 +7,27 @@ import type { Filter } from "../evidence";
 import type { ProposalOp } from "../rules";
 
 export type ProposalStatus = "pending" | "accepted" | "rejected";
+export type Verdict = "support" | "caution" | "oppose";
+
+export interface Critique {
+  run_id: string;
+  at: string;
+  verdict: Verdict;
+  adjusted_confidence: number;
+  concerns: string[];
+  what_would_change_my_mind: string;
+  /** Set when code overrode the model's verdict (e.g. n < 10 can't be "support"). Shown to the operator. */
+  override?: { model_verdict: Verdict; reason: string };
+}
 
 export interface Proposal {
   id: string; // P-###
   status: ProposalStatus;
   created_at: string;
   run_id: string;
+  /** The evidence the Analyst saw, so the Skeptic reviews the same rows. */
+  window?: { from: string; to: string };
+  synthetic?: boolean;
   op: ProposalOp;
   rule_id?: string;
   rule_text?: string;
@@ -24,6 +39,9 @@ export interface Proposal {
   confidence: number;
   /** Recomputed by the server from `slice` over the run's evidence; the model's metric text is never trusted on its own. */
   check: { n: number; humanReplies: number; bounces: number };
+  critique?: Critique;
+  /** Set when the Skeptic ran but didn't submit a critique (timeout, error, no call). */
+  critique_error?: string;
   /** Set when the operator decides. */
   decision?: {
     at: string;
@@ -59,7 +77,7 @@ export function proposalStore(dir: string) {
       save([...all, p]);
       return p;
     },
-    update(id: string, patch: Partial<Pick<Proposal, "status" | "decision">>): Proposal {
+    update(id: string, patch: Partial<Pick<Proposal, "status" | "decision" | "critique" | "critique_error">>): Proposal {
       const all = list();
       const i = all.findIndex((p) => p.id === id);
       if (i === -1) throw new Error(`${id} not found`);
