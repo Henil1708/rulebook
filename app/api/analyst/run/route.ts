@@ -1,6 +1,7 @@
 // POST /api/analyst/run — runs the Analyst and streams its events as server-sent events.
 // Body: { from: "YYYY-MM-DD", to: "YYYY-MM-DD", synthetic?: boolean }
-// Events: one per gitagent message (event = message type), then `done` (AnalystResult) or `error`.
+// Events: one per gitagent message (event = message type, data.agent = "analyst" | "skeptic"; the Skeptic
+// runs on each new proposal after the Analyst), then `done` (AnalystResult) or `error`.
 import { z } from "zod";
 import { refuseCrossSite } from "@/lib/http";
 import { runAnalyst } from "@/lib/agents/analyst";
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       const send = (event: string, data: unknown) =>
         controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       try {
-        const result = await runAnalyst({ window: { from, to }, synthetic, signal: req.signal, onEvent: (m) => send(m.type, m) });
+        const result = await runAnalyst({ window: { from, to }, synthetic, signal: req.signal, onEvent: (m, agent) => send(m.type, { ...m, agent }) });
         send("done", result);
       } catch (err) {
         send("error", { message: (err as Error).message });
