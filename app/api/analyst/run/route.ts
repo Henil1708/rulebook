@@ -2,6 +2,7 @@
 // Body: { from: "YYYY-MM-DD", to: "YYYY-MM-DD", synthetic?: boolean }
 // Events: one per gitagent message (event = message type), then `done` (AnalystResult) or `error`.
 import { z } from "zod";
+import { refuseCrossSite } from "@/lib/http";
 import { runAnalyst } from "@/lib/agents/analyst";
 
 export const runtime = "nodejs";
@@ -11,6 +12,8 @@ const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Body = z.object({ from: DATE, to: DATE, synthetic: z.boolean().optional() }).strict();
 
 export async function POST(req: Request) {
+  const refused = refuseCrossSite(req);
+  if (refused) return refused;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: "body must be { from: YYYY-MM-DD, to: YYYY-MM-DD, synthetic?: boolean }" }, { status: 400 });
