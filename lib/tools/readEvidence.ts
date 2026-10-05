@@ -1,9 +1,11 @@
 // read_evidence: compact slice aggregates + at most 15 sample rows. Never the whole file (G13–G16).
 import { tool } from "@open-gitagent/gitagent";
+import { z } from "zod";
 import {
-  FILTER_FIELDS, HUMAN_REPLY, sliceStats, stats,
+  FILTER_FIELDS, FilterSchema, HUMAN_REPLY, WindowSchema, sliceStats, stats,
   type Evidence, type FilterField, type Filter, type SliceStats, type Window,
 } from "../evidence";
+import { parseArgs, toolSchema } from "./schema";
 
 export const MAX_SAMPLE = 15;
 const MAX_GROUPS = 20;
@@ -51,39 +53,16 @@ export function readEvidence(rows: Evidence[], { filter = {}, window = {}, group
   };
 }
 
-const fieldFilter = {
-  description: 'A value, a list of values (any of), or {"not": value-or-list}.',
-  anyOf: [
-    { type: ["string", "boolean"] },
-    { type: "array", items: { type: ["string", "boolean"] } },
-    { type: "object", properties: { not: {} }, required: ["not"], additionalProperties: false },
-  ],
-};
+export const ReadEvidenceArgsSchema = z
+  .object({ filter: FilterSchema.optional(), window: WindowSchema.optional(), groupBy: z.enum(FILTER_FIELDS).optional() })
+  .strict();
 
 /** `getRows` is called per request so the real/synthetic toggle applies immediately. */
 export function readEvidenceTool(getRows: () => Evidence[]) {
   return tool(
     "read_evidence",
     `Query outreach evidence. Returns slice stats (n, humanReplies, positive, rejections, bounces, rate), optional per-group stats, and up to ${MAX_SAMPLE} sample rows with IDs. Cite row IDs as evidence.`,
-    {
-      type: "object",
-      properties: {
-        filter: {
-          type: "object",
-          description: `Field filters, AND-ed. Fields: ${FILTER_FIELDS.join(", ")}. Example: {"market":{"not":"IN"},"inbox_type":"named_person"}`,
-          properties: Object.fromEntries(FILTER_FIELDS.map((f) => [f, fieldFilter])),
-          additionalProperties: false,
-        },
-        window: {
-          type: "object",
-          description: "Inclusive sent_at range, YYYY-MM-DD.",
-          properties: { from: { type: "string" }, to: { type: "string" } },
-          additionalProperties: false,
-        },
-        groupBy: { type: "string", enum: [...FILTER_FIELDS] },
-      },
-      additionalProperties: false,
-    },
-    async (args: ReadEvidenceArgs) => JSON.stringify(readEvidence(getRows(), args)),
+    toolSchema(ReadEvidenceArgsSchema),
+    async (args: unknown) => JSON.stringify(readEvidence(getRows(), parseArgs(ReadEvidenceArgsSchema, args))),
   );
 }
