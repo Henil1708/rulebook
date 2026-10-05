@@ -24,6 +24,14 @@ export interface Proposal {
   confidence: number;
   /** Recomputed by the server from `slice` over the run's evidence; the model's metric text is never trusted on its own. */
   check: { n: number; humanReplies: number; bounces: number };
+  /** Set when the operator decides. */
+  decision?: {
+    at: string;
+    sha: string; // the rule commit (accept) or memory commit (reject)
+    rule_id?: string; // accept: the ID the change landed on (new for add)
+    final_text?: string; // accept: the text committed, if it differs from rule_text (operator edit)
+    reason?: string; // reject
+  };
 }
 
 export type NewProposal = Omit<Proposal, "id" | "status" | "created_at">;
@@ -50,6 +58,14 @@ export function proposalStore(dir: string) {
       const p: Proposal = { id: `P-${String(next).padStart(3, "0")}`, status: "pending", created_at: new Date().toISOString(), ...input };
       save([...all, p]);
       return p;
+    },
+    update(id: string, patch: Partial<Pick<Proposal, "status" | "decision">>): Proposal {
+      const all = list();
+      const i = all.findIndex((p) => p.id === id);
+      if (i === -1) throw new Error(`${id} not found`);
+      all[i] = { ...all[i], ...patch };
+      save(all);
+      return all[i];
     },
   };
 }
