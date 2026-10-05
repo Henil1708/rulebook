@@ -76,6 +76,10 @@ export async function acceptProposal({ git, store }: Deps, id: string, editedTex
       N: String(p.check.n),
       Metric: `${plural(p.check.humanReplies, "human reply", "human replies")}, ${plural(p.check.bounces, "bounce", "bounces")}`,
       "Proposed-By": "analyst",
+      ...(p.critique ? { Critique: `${p.critique.verdict} (${p.critique.adjusted_confidence.toFixed(2)}) — skeptic` } : {}),
+      ...(p.critique?.override
+        ? { "Critique-Override": `${p.critique.override.model_verdict} -> ${p.critique.verdict}, ${p.critique.override.reason}` }
+        : {}),
       ...(editedText !== undefined && text !== p.rule_text ? { "Edited-By": "operator" } : {}),
       "Approved-By": "operator",
       "Evidence-Source": [...sources].sort().join(", "),

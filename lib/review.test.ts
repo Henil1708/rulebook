@@ -95,6 +95,20 @@ describe("acceptProposal", () => {
     expect(proposal.decision?.rule_id).toBe("R-006");
   });
 
+  it("adds the Skeptic's verdict as a Critique trailer, and the override when code changed it", async () => {
+    const critique = { run_id: "s1", at: "t", adjusted_confidence: 0.55, concerns: ["small"], what_would_change_my_mind: "more data" };
+    await acceptProposal(deps, store.add({ ...base, critique: { ...critique, verdict: "caution" } } as NewProposal).id);
+    expect((await git.log())[0].trailers).toMatchObject({ Critique: "caution (0.55) — skeptic" });
+    expect((await git.log())[0].trailers).not.toHaveProperty("Critique-Override");
+
+    const overridden = { ...critique, verdict: "caution" as const, override: { model_verdict: "support" as const, reason: "n=6 is below 10: support is not allowed, downgraded to caution" } };
+    await acceptProposal(deps, store.add({ ...base, rule_text: "Prefer careers inboxes at scale-ups.", critique: overridden } as NewProposal).id);
+    expect((await git.log())[0].trailers).toMatchObject({
+      Critique: "caution (0.55) — skeptic",
+      "Critique-Override": "support -> caution, n=6 is below 10: support is not allowed, downgraded to caution",
+    });
+  });
+
   it("marks synthetic evidence in Evidence-Source", async () => {
     await acceptProposal(deps, add({ evidence_ids: ["ev-001", "syn-trap"] }));
     expect((await git.log())[0].trailers["Evidence-Source"]).toBe("gmail, synthetic");
