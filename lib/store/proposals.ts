@@ -22,8 +22,8 @@ export interface Proposal {
   metric: string;
   rationale: string;
   confidence: number;
-  /** Recomputed by the server from `slice` over the run's evidence, so the Skeptic and UI can compare with the model's claim. */
-  check: { n: number; humanReplies: number; bounces: number; idsOutsideSlice: string[] };
+  /** Recomputed by the server from `slice` over the run's evidence; the model's metric text is never trusted on its own. */
+  check: { n: number; humanReplies: number; bounces: number };
 }
 
 export type NewProposal = Omit<Proposal, "id" | "status" | "created_at">;
