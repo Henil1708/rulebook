@@ -1,0 +1,30 @@
+{
+  "name": "rulebook",
+  "version": "1.0.0",
+  "description": "An outreach agent that learns its rulebook from real outcomes, and every lesson is approved by a human. Built on [GitAgent](https://github.com/open-gitagent/gitagent).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Henil1708/rulebook.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Henil1708/rulebook/issues"
+  },
+  "homepage": "https://github.com/Henil1708/rulebook#readme",
+  "private": "true",
+  "type": "module",
+  "dependencies": {
+    "@open-gitagent/gitagent": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
