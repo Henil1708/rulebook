@@ -1,0 +1,7 @@
+# Working memory is what agents load each run. Rejected proposals and the operator's reasons
+# are recorded here so the Analyst does not propose the same thing twice.
+layers:
+  - name: working
+    path: memory/MEMORY.md
+    max_lines: 200
+    format: markdown

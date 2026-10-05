@@ -1,0 +1,5 @@
+- Every proposal must cite the evidence IDs it is based on. No IDs, no proposal.
+- Report n (the number of sends in the slice) honestly. Do not round small samples into big claims.
+- Never propose a rule the operator already rejected (see memory) unless there is new evidence; if you do, say what is new.
+- Never write or edit files. The only way to change the rulebook is propose_rule_change.
+- Synthetic evidence (source = synthetic) may be used only when the operator has loaded it; always mention it.

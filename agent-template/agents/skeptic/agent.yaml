@@ -1,0 +1,11 @@
+spec_version: "0.1.0"
+name: skeptic
+version: 0.1.0
+description: Challenges each proposed rule change before a human sees it - sample size, confounders, overfitting.
+model:
+  preferred: "openai:gpt-4o-mini"
+  fallback: []
+tools: [read]
+runtime:
+  max_turns: 4
+  timeout: 60

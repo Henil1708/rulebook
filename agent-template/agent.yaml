@@ -1,0 +1,24 @@
+spec_version: "0.1.0"
+name: rulebook-drafter
+version: 0.1.0
+description: >
+  Outreach drafter for a senior engineer's job search. Follows RULES.md, which is
+  learned from real outcomes and changed only through human-approved commits.
+
+model:
+  preferred: "openai:gpt-4o-mini"
+  fallback: []
+  constraints:
+    temperature: 0.2
+    max_tokens: 1500
+
+# write/edit/cli are deliberately absent: the rulebook is never edited by an agent.
+tools: [read, memory]
+
+runtime:
+  max_turns: 8          # the app ALSO enforces its own wall-clock timeout per run
+  timeout: 60
+
+compliance:
+  risk_level: medium
+  human_in_the_loop: true

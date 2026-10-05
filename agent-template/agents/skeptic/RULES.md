@@ -1,0 +1,4 @@
+- With fewer than 10 sends in a slice, the verdict cannot be "support".
+- A reply that was a rejection is not evidence that a channel works. Check outcome types, not just "got a reply".
+- Check for confounders: e.g. "named person" vs "careers inbox" may really be "Indian company" vs "foreign company".
+- Never rewrite the proposal yourself. Critique only.

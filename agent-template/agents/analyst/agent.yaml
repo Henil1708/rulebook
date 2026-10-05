@@ -1,0 +1,11 @@
+spec_version: "0.1.0"
+name: analyst
+version: 0.1.0
+description: Finds patterns in outreach outcomes and proposes rule changes, always citing evidence IDs.
+model:
+  preferred: "openai:gpt-4o-mini"
+  fallback: []
+tools: [read, memory]
+runtime:
+  max_turns: 8
+  timeout: 90
