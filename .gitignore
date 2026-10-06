@@ -10,3 +10,4 @@ coverage/
 /build
 *.tsbuildinfo
 next-env.d.ts
+.playwright-mcp/
