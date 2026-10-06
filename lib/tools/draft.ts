@@ -28,7 +28,9 @@ export function submitDraftTool(ruleIds: string[], onDraft: (d: DraftInput) => v
     "Submit the email draft (or the decision to skip this target). Call exactly once.",
     toolSchema(DraftInputSchema),
     async (args: unknown) => {
-      const d = parseArgs(DraftInputSchema, args);
+      const parsed = parseArgs(DraftInputSchema, args);
+      // Models sometimes double-escape line breaks ("\\n" in the text); turn them back into real ones.
+      const d = { ...parsed, ...(parsed.body ? { body: parsed.body.replace(/\\n/g, "\n") } : {}) };
       const inline = [...(d.body ?? "").matchAll(/\((R-\d{3,})\)/g)].map((m) => m[1]);
       const unknown = [...new Set([...d.cited_rules, ...inline])].filter((id) => !known.has(id));
       if (unknown.length) throw new Error(`these rule IDs are not in your RULES.md: ${unknown.join(", ")}. Cite only: ${ruleIds.join(", ")}`);

@@ -57,26 +57,33 @@ export function runDrafter(target: Target, ref: string, opts: { signal?: AbortSi
     try {
       const rules = parseRules(readFileSync(join(dir, RULES_PATH), "utf8"));
       let draft: DraftInput | undefined;
+      let costUsd = 0;
+      let run: Awaited<ReturnType<typeof runAgent>> | undefined;
       const rows = loadEvidence();
-      const run = await runAgent({
-        agent: "drafter",
-        dir,
-        prompt: [
-          `Target: ${JSON.stringify(target)}`,
-          "Follow your RULES.md exactly. If a rule says not to contact this target, or not this way, decide skip and say which rule.",
-          "Otherwise draft one short email: pick the address or inbox the rules allow, a specific subject, and a body under 150 words.",
-          'Cite the rule behind each choice inline, e.g. "(R-002)", and list every cited ID in cited_rules.',
-          "You may use read_evidence (e.g. filter by company) to see past outreach to this target. Then call submit_draft exactly once.",
-        ].join("\n"),
-        tools: [readEvidenceTool(() => rows), submitDraftTool(rules.map((r) => r.id), (d) => (draft = d))],
-        allowedTools: DRAFTER_TOOLS,
-        maxTurns: MAX_TURNS,
-        signal: opts.signal,
-        onEvent: opts.onEvent,
-      });
-      const costUsd = run.costs.totalCostUsd;
-      runLog(STORE_DIR).add({ kind: "drafter", status: run.status, costUsd, proposalIds: [] });
-      return { sha, rules, ...(draft ? { draft } : {}), status: run.status, ...(run.error ? { error: run.error } : {}), costUsd };
+      // The model sometimes writes the email as plain text and stops; one retry with a nudge fixes it.
+      for (let attempt = 0; attempt < 2 && !draft && !opts.signal?.aborted; attempt++) {
+        run = await runAgent({
+          agent: "drafter",
+          dir,
+          prompt: [
+            `Target: ${JSON.stringify(target)}`,
+            "Follow your RULES.md exactly. Decide skip only if a rule explicitly says not to contact this kind of target; quote that rule. Rules about how to write the email are never a reason to skip.",
+            "Otherwise draft one short email: pick the address or inbox the rules allow, a specific subject, and a body under 150 words.",
+            'Cite the rule behind each choice inline, e.g. "(R-002)", and list every cited ID in cited_rules.',
+            "You may use read_evidence (e.g. filter by company) to see past outreach to this target.",
+            "Your answer only counts if you call submit_draft. Do not write the email as a message; call submit_draft exactly once.",
+            ...(attempt ? ["Last time you did not call submit_draft. Call it now."] : []),
+          ].join("\n"),
+          tools: [readEvidenceTool(() => rows), submitDraftTool(rules.map((r) => r.id), (d) => (draft = d))],
+          allowedTools: DRAFTER_TOOLS,
+          maxTurns: MAX_TURNS,
+          signal: opts.signal,
+          onEvent: opts.onEvent,
+        });
+        costUsd += run.costs.totalCostUsd;
+      }
+      runLog(STORE_DIR).add({ kind: "drafter", status: run!.status, costUsd, proposalIds: [] });
+      return { sha, rules, ...(draft ? { draft } : {}), status: run!.status, ...(run!.error ? { error: run!.error } : {}), costUsd };
     } finally {
       await git.removeWorktreeUnlocked(dir);
       rmSync(join(dir, ".."), { recursive: true, force: true });

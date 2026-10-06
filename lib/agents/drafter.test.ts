@@ -77,6 +77,8 @@ describe("runDrafter", () => {
   it("collects inline citations and refuses rule IDs that don't exist at that version", async () => {
     submit = draft([], "Writing to careers@ (R-002) with a tailored first line (R-004).");
     expect((await runDrafter(target, "HEAD")).draft?.cited_rules).toEqual(["R-002", "R-004"]);
+    submit = draft(["R-002"], "Hi team,\\n\\nWriting to careers@ (R-002).");
+    expect((await runDrafter(target, "HEAD")).draft?.body).toBe("Hi team,\n\nWriting to careers@ (R-002).");
     submit = draft(["R-099"]);
     expect((await runDrafter(target, "HEAD")).draft).toBeUndefined();
   });
