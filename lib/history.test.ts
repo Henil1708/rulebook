@@ -19,6 +19,7 @@ describe("toHistory", () => {
       ["You changed Rule 3", false, true],
       ["Your starting rules", false, false],
     ]);
+    expect(items.map((i) => i.kind)).toEqual(["undo", "dismiss", "rule", "start"]);
     expect(items[0].detail).toBe("Rule 3 is back to how it was.");
     expect(items[1].detail).toBe('Your reason: "most replies were rejections"');
     expect(items[2]).toMatchObject({ detail: 'New wording: "Use the careers@ inbox"', note: "Based on 43 of your emails. In your own words." });

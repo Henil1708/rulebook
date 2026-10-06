@@ -37,6 +37,8 @@ export interface RuleOrigin {
   approvedBy?: string;
   /** Applied on an early sign (an interested reply in a small group): a rule being tried out. */
   trial?: boolean;
+  /** The evidence rows the change cites, as the UI shows them. */
+  emails?: { id: string; company: string; outcome: string }[];
 }
 
 export interface RuleView {
@@ -79,6 +81,7 @@ export async function workspaceState(): Promise<WorkspaceState> {
   const shaByLine = new Map(blame.map((l) => [l.text.trim(), l.sha]));
   const initSha = log.at(-1)?.sha;
 
+  const rowsById = new Map(loadEvidence({ synthetic: true }).map((e) => [e.id, e]));
   const rules = parseRules(readFileSync(join(AGENT_DIR, RULES_PATH), "utf8")).map((r): RuleView => {
     const c = commits.get(shaByLine.get(`- [${r.id}] ${r.text}`) ?? "");
     if (!c) return r;
@@ -92,6 +95,9 @@ export async function workspaceState(): Promise<WorkspaceState> {
         initial: c.sha === initSha,
         ...(t.N ? { n: Number(t.N) } : {}),
         ...(t.Evidence ? { evidence: t.Evidence.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+        ...(t.Evidence
+          ? { emails: t.Evidence.split(",").map((s) => rowsById.get(s.trim())).filter((e) => e !== undefined).map((e) => ({ id: e.id, company: e.company, outcome: e.outcome })) }
+          : {}),
         ...(t.Critique ? { critique: t.Critique } : {}),
         ...(t["Approved-By"] ? { approvedBy: t["Approved-By"] } : {}),
         ...(t["Evidence-Level"]?.startsWith("early") ? { trial: true } : {}),
