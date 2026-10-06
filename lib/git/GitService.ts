@@ -178,6 +178,18 @@ export class GitService {
     });
   }
 
+  /**
+   * A detached checkout of `ref` at `dir` (e.g. a temp dir), so an agent can run on the rulebook as it was.
+   * The caller holds the lock and removes it with removeWorktree.
+   */
+  async addWorktreeUnlocked(ref: string, dir: string): Promise<void> {
+    await this.git(["worktree", "add", "--detach", dir, assertRef(ref)]);
+  }
+
+  async removeWorktreeUnlocked(dir: string): Promise<void> {
+    await this.git(["worktree", "remove", "--force", dir]).catch(() => this.git(["worktree", "prune"]));
+  }
+
   async branches(): Promise<{ current: string; all: string[] }> {
     const [current, all] = await Promise.all([
       this.git(["branch", "--show-current"]),

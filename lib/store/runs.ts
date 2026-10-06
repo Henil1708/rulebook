@@ -5,7 +5,7 @@ import { readJson, writeJson } from "./json";
 
 export interface RunRecord {
   at: string;
-  kind: "analyst" | "skeptic" | "combine"; // an analyst run includes the Skeptic reviews it triggered; combine = draft + review
+  kind: "analyst" | "skeptic" | "combine" | "drafter"; // an analyst run includes the Skeptic reviews it triggered; combine = draft + review
   status: string;
   costUsd: number;
   window?: { from: string; to: string };
