@@ -10,13 +10,21 @@ const execFileAsync = promisify(execFile);
 
 // One queue per process. Kept on globalThis so Next's per-route bundles share it.
 // ponytail: in-process lock only; one server process owns workspace/, so no file lock needed.
-const g = globalThis as { __rulebookLock?: Promise<unknown> };
+const g = globalThis as { __rulebookLock?: Promise<unknown>; __rulebookLockDepth?: number };
 
 /** Run `fn` after every earlier locked call has settled. */
 export function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  const next = (g.__rulebookLock ?? Promise.resolve()).then(fn, fn);
+  g.__rulebookLockDepth = (g.__rulebookLockDepth ?? 0) + 1;
+  const next = (g.__rulebookLock ?? Promise.resolve()).then(fn, fn).finally(() => {
+    g.__rulebookLockDepth! -= 1;
+  });
   g.__rulebookLock = next.catch(() => {});
   return next;
+}
+
+/** True while a locked call is running or queued, so routes can answer "busy" instead of waiting minutes. */
+export function lockBusy(): boolean {
+  return (g.__rulebookLockDepth ?? 0) > 0;
 }
 
 /** Refs/branches go straight into argv, so a leading `-` would be read as an option (e.g. `--output=`). */
@@ -155,10 +163,18 @@ export class GitService {
     });
   }
 
-  revert(sha: string): Promise<string> {
+  /** `git revert --no-edit`; a conflicting revert is aborted so the repo stays clean. `after` runs inside the lock. */
+  revert(sha: string, after?: (sha: string) => void | Promise<void>): Promise<string> {
     return withLock(async () => {
-      await this.git(["revert", "--no-edit", assertRef(sha)]);
-      return this.head();
+      try {
+        await this.git(["revert", "--no-edit", assertRef(sha)]);
+      } catch (err) {
+        await this.git(["revert", "--abort"]).catch(() => {});
+        throw err;
+      }
+      const head = await this.head();
+      await after?.(head);
+      return head;
     });
   }
 

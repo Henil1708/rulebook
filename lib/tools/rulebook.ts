@@ -1,7 +1,7 @@
 // read_rulebook and propose_rule_change. Proposing never touches git: it validates and stores a pending proposal.
 import { tool } from "@open-gitagent/gitagent";
 import { z } from "zod";
-import { FilterSchema, sliceStats, type Evidence } from "../evidence";
+import { FilterSchema, isSend, sliceStats, stats, type Evidence, type SliceStats } from "../evidence";
 import { applyProposal, cleanRuleText, nextRuleId, parseRules, RULE_ID, type Rule } from "../rules";
 import type { Proposal, ProposalStore } from "../store/proposals";
 import { parseArgs, toolSchema } from "./schema";
@@ -9,6 +9,7 @@ import { parseArgs, toolSchema } from "./schema";
 export const ProposalInputSchema = z
   .object({
     op: z.enum(["add", "modify", "retire"]),
+    title: z.string().min(3).max(60).optional().describe('A short plain-English name for the change, 2 to 7 words, e.g. "Prefer careers@ inboxes".'),
     rule_id: z.string().regex(RULE_ID).optional().describe("Required for modify and retire. Omit for add (the ID is assigned on accept)."),
     rule_text: z.string().min(10).max(300).optional().describe("The NEW rule as one sentence (for modify it must differ from the current text). Required for add and modify. No ID prefix."),
     evidence_ids: z.array(z.string().regex(/^(ev|syn)-[\w-]+$/)).min(1).max(40).describe("IDs of rows inside the slice (from read_evidence with this slice's filter)."),
@@ -34,6 +35,22 @@ export function readRulebookTool(readRules: () => string) {
     toolSchema(z.object({}).strict()),
     async () => JSON.stringify({ rules: parseRules(readRules()) satisfies Rule[] }),
   );
+}
+
+/** The bar a suggestion must clear. Agreed with the operator, 2026-10-06. */
+export const EVIDENCE = { minEmails: 10, minDifference: 0.05, minEvents: 2 };
+
+/**
+ * strong = enough emails, a clear difference from the overall rates, and at least 2 real replies or bounces behind it.
+ * early = at least one interested reply, however small the group: worth trying before it becomes a firm rule.
+ * undefined = not enough to suggest anything.
+ */
+export function evidenceLevel(s: SliceStats, base: SliceStats): "strong" | "early" | undefined {
+  const bounce = (x: SliceStats) => (x.n ? x.bounces / x.n : 0);
+  const differs = Math.abs(s.rate - base.rate) >= EVIDENCE.minDifference || Math.abs(bounce(s) - bounce(base)) >= EVIDENCE.minDifference;
+  if (s.n >= EVIDENCE.minEmails && differs && s.humanReplies + s.bounces >= EVIDENCE.minEvents) return "strong";
+  if (s.positive >= 1) return "early";
+  return undefined;
 }
 
 export interface ProposeContext {
@@ -71,13 +88,23 @@ export function propose(ctx: ProposeContext, args: unknown): Proposal {
   if (outside.length) throw new Error(`evidence IDs not in this slice: ${outside.join(", ")}. Cite IDs from read_evidence with this slice's filter`);
   if (input.n !== s.n) throw new Error(`n must be the sends in this slice: ${s.n}, not ${input.n}`);
 
+  const level = evidenceLevel(s, stats(ctx.rows.filter(isSend)));
+  if (!level) {
+    throw new Error(
+      `not enough evidence to suggest a change: this slice has ${s.n} sends, ${s.humanReplies} human replies (${s.positive} interested) and ${s.bounces} bounces. ` +
+        `A change needs ${EVIDENCE.minEmails}+ sends, a reply or bounce rate at least ${EVIDENCE.minDifference * 100} points from the baseline and ${EVIDENCE.minEvents}+ replies or bounces; ` +
+        "or at least one interested reply (reply_positive). Making no suggestion is a good outcome.",
+    );
+  }
+
   return ctx.store.add({
     run_id: ctx.runId,
     ...(ctx.window ? { window: ctx.window } : {}),
     ...(ctx.synthetic ? { synthetic: true } : {}),
     ...input,
     evidence_ids: [...new Set(input.evidence_ids)],
-    check: { n: s.n, humanReplies: s.humanReplies, bounces: s.bounces },
+    check: { n: s.n, humanReplies: s.humanReplies, bounces: s.bounces, positive: s.positive },
+    evidence_level: level,
   });
 }
 

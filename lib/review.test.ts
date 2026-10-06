@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GitService } from "./git/GitService";
-import { acceptProposal, ANALYST_MEMORY_PATH, rejectProposal, renderSlice } from "./review";
+import { acceptProposal, ANALYST_MEMORY_PATH, rejectProposal, rejectProposals, renderSlice, undoChange } from "./review";
 import { parseRules } from "./rules";
 import { proposalStore, type NewProposal, type ProposalStore } from "./store/proposals";
 
@@ -135,8 +135,8 @@ describe("acceptProposal", () => {
 
   it("409s on a second decision and on a proposal the rulebook has moved past", async () => {
     const a = add({ op: "retire", rule_id: "R-002", rule_text: undefined });
-    const b = add({ op: "modify", rule_id: "R-002", rule_text: "Prefer careers@ over info@." });
     await acceptProposal(deps, a);
+    const b = add({ op: "modify", rule_id: "R-002", rule_text: "Prefer careers@ over info@." }); // made before the retire landed
     await expect(acceptProposal(deps, a)).rejects.toMatchObject({ status: 409, message: "P-001 is already accepted" });
     await expect(acceptProposal(deps, b)).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/no longer applies: R-002 is not in the rulebook/) });
     expect(store.get(b)?.status).toBe("pending");
@@ -181,6 +181,59 @@ describe("rejectProposal", () => {
     await expect(rejectProposal(deps, id, "`;$")).rejects.toMatchObject({ status: 400 });
     await acceptProposal(deps, id);
     await expect(rejectProposal(deps, id, "too late")).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("grouped decisions", () => {
+  const modify = (text: string) => add({ op: "modify", rule_id: "R-002", rule_text: text });
+  const memory = () => readFileSync(join(git.cwd, ANALYST_MEMORY_PATH), "utf8");
+
+  it("applying one suggestion closes the rule's others as replaced, in the same commit", async () => {
+    const [a, b, c] = [modify("Send to the careers@ inbox first."), modify("Send to the hr@ inbox first."), add()];
+    const { sha } = await acceptProposal(deps, a);
+    expect(store.get(b)).toMatchObject({ status: "superseded", decision: { sha, note: `Replaced by ${a}` } });
+    expect(store.get(c)?.status).toBe("pending"); // an add for no rule is untouched
+    const [head] = await git.log();
+    expect(head.trailers.Replaces).toBe(b);
+    expect(memory()).toContain(`Replaced by ${a}: ${b} (modify R-002: Send to the hr@ inbox first.`);
+  });
+
+  it("dismisses several suggestions with one reason in one commit", async () => {
+    const ids = [modify("Send to the careers@ inbox first."), modify("Send to the hr@ inbox first.")];
+    const { sha } = await rejectProposals(deps, ids, "most replies were rejections");
+    expect(ids.map((id) => store.get(id)?.status)).toEqual(["rejected", "rejected"]);
+    const [head] = await git.log();
+    expect(head.sha).toBe(sha);
+    expect(head.subject).toBe(`memory(analyst): rejected 2 proposals (${ids.join(", ")}) — most replies were rejections`);
+    expect(memory().match(/Reason: most replies were rejections/g)).toHaveLength(2);
+  });
+
+  it("undo reverts the commit and puts its suggestions back, and can't run twice", async () => {
+    const [a, b] = [modify("Send to the careers@ inbox first."), modify("Send to the hr@ inbox first.")];
+    const before = rules();
+    const { sha } = await acceptProposal(deps, a);
+    const undone = await undoChange(deps, sha);
+    expect(rules()).toBe(before);
+    expect(undone.restored.sort()).toEqual([a, b]);
+    expect([store.get(a)?.status, store.get(b)?.status]).toEqual(["pending", "pending"]);
+    expect((await git.log())[0].subject).toMatch(/^Revert "rule\(R-002\)/);
+    await expect(undoChange(deps, sha)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("undo of a combined change hides the combined draft again and brings back its parts", async () => {
+    const [a, b] = [modify("Send to the careers@ inbox first."), modify("Send to the hr@ inbox first.")];
+    const c = store.add({ ...base, op: "modify", rule_id: "R-002", rule_text: "Send to the careers@ or hr@ inbox first.", combines: [a, b] }).id;
+    const { sha } = await acceptProposal(deps, c);
+    const undone = await undoChange(deps, sha);
+    expect(undone.restored.sort()).toEqual([a, b]);
+    expect([store.get(a)?.status, store.get(b)?.status, store.get(c)?.status]).toEqual(["pending", "pending", "draft"]);
+  });
+
+  it("undo refuses when a later change touched the same rule, and leaves the repo clean", async () => {
+    const { sha } = await acceptProposal(deps, modify("Send to the careers@ inbox first."));
+    await acceptProposal(deps, modify("Send to the hr@ inbox first."));
+    await expect(undoChange(deps, sha)).rejects.toMatchObject({ status: 409, code: "conflict" });
+    expect((await git.log())[0].subject).toMatch(/^rule\(R-002\)/);
   });
 });
 

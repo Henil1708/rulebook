@@ -25,6 +25,17 @@ export interface Evidence {
   note?: string;
 }
 
+/** What the UI may show: no recipient addresses, subjects or domains. */
+export type FeedRow = Omit<Evidence, "recipient" | "subject" | "domain">;
+
+export function toFeedRow(r: Evidence): FeedRow {
+  const row: Partial<Evidence> = { ...r };
+  delete row.recipient;
+  delete row.subject;
+  delete row.domain;
+  return row as FeedRow;
+}
+
 export const FILTER_FIELDS = [
   "id", "company", "market", "company_stage", "segment", "inbox_type", "address_pattern",
   "outcome", "responder", "source", "attrs_inferred", "duplicate_of_earlier",
@@ -57,7 +68,7 @@ export const WindowSchema = z
 
 export const HUMAN_REPLY = new Set(["reply_rejection", "reply_positive", "reply_redirect"]);
 
-export function loadEvidence({ synthetic = false, dataDir = join(process.cwd(), "data") } = {}): Evidence[] {
+export function loadEvidence({ synthetic = false, dataDir = join(/* turbopackIgnore: true */ process.cwd(), "data") } = {}): Evidence[] {
   const read = (f: string) => JSON.parse(readFileSync(join(dataDir, f), "utf8")) as Evidence[];
   return synthetic ? [...read("evidence.real.json"), ...read("evidence.synthetic.json")] : read("evidence.real.json");
 }
