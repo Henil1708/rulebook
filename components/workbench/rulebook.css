@@ -5,6 +5,7 @@
   --add: #1f7a4d; --add-soft: #e9f5ee; --del: #9a2c22; --del-ink: #7c2a22; --del-soft: #fbeceb;
   --warn: #7a5500; --warn-soft: #fdf8ea; --warn-line: #f2e3b8; --bar-muted: #9aa1ad; --scrim: rgba(22, 24, 29, 0.32);
   --toast: #16181d; --toast-ink: #ffffff; --toast-link: #aab4ff;
+  --go: #1f7a4d; --go-soft: #e9f5ee; --change: #B45309; --change-soft: #fdf3e7; --skip: #B42318; --skip-soft: #fdecea;
   position: relative; display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
   background: var(--app); color: var(--ink); font: 14px/1.5 var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
@@ -15,7 +16,7 @@
     --line: #2a2f36; --line-2: #363c45; --accent: #7f95ff; --accent-ink: #0e1013; --accent-soft: #1e2440;
     --add: #6fcf97; --add-soft: #16291f; --del: #f08a80; --del-ink: #f2a39b; --del-soft: #2c1918;
     --warn: #e8c46a; --warn-soft: #27210f; --warn-line: #4a3d17; --bar-muted: #5d6470; --scrim: rgba(0, 0, 0, 0.5);
-    --toast: #eceef2; --toast-ink: #16181d; --toast-link: #2b4acb;
+    --toast: #eceef2; --toast-ink: #16181d; --toast-link: #2b4acb; --go: #6fcf97; --go-soft: #16291f; --change: #f0a35e; --change-soft: #2e2113; --skip: #f2857a; --skip-soft: #2e1714;
     color-scheme: dark;
   }
 }
@@ -24,7 +25,7 @@
     --line: #2a2f36; --line-2: #363c45; --accent: #7f95ff; --accent-ink: #0e1013; --accent-soft: #1e2440;
     --add: #6fcf97; --add-soft: #16291f; --del: #f08a80; --del-ink: #f2a39b; --del-soft: #2c1918;
     --warn: #e8c46a; --warn-soft: #27210f; --warn-line: #4a3d17; --bar-muted: #5d6470; --scrim: rgba(0, 0, 0, 0.5);
-    --toast: #eceef2; --toast-ink: #16181d; --toast-link: #2b4acb;
+    --toast: #eceef2; --toast-ink: #16181d; --toast-link: #2b4acb; --go: #6fcf97; --go-soft: #16291f; --change: #f0a35e; --change-soft: #2e2113; --skip: #f2857a; --skip-soft: #2e1714;
     color-scheme: dark;
 }
 .rb h1, .rb h2, .rb h3 { text-wrap: balance; }
@@ -148,31 +149,87 @@
 .rb .opinion ul { margin: 0; padding-left: 18px; color: var(--ink-2); }
 
 /* Right rail and drawers */
-.rb .rail { flex: 0 0 76px; background: var(--card); border-left: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 0; }
-.rb .rail-btn { width: 64px; padding: 10px 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+.rb .rail { flex: 0 0 88px; background: var(--card); border-left: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 0; }
+.rb .rail-btn { width: 76px; padding: 10px 6px; border: 0; border-radius: 10px; line-height: 1.2; white-space: nowrap; background: transparent; color: var(--ink-2); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+.rb .rail-sep { width: 40px; height: 1px; background: var(--line); margin: 6px 0; }
 .rb .theme-wrap { margin-top: auto; position: relative; }
 .rb .theme-menu { position: absolute; right: calc(100% + 8px); bottom: 0; z-index: 40; min-width: 160px; padding: 6px; background: var(--card); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.16); display: flex; flex-direction: column; gap: 2px; }
 .rb .theme-menu button { display: grid; grid-template-columns: 16px 1fr 16px; align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; text-align: left; font-size: 13px; }
 .rb .theme-menu button:hover, .rb .theme-menu button[aria-checked="true"] { background: var(--app); }
 .rb .theme-menu button svg:last-child { color: var(--accent); }
-.rb .rail-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.rb .drawer { position: absolute; top: 0; right: 76px; bottom: 0; z-index: 20; width: min(400px, calc(100% - 76px)); background: var(--card); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.10); display: flex; flex-direction: column; }
-.rb .drawer.wide { width: min(960px, calc(100% - 76px)); }
-.rb .draft { display: flex; flex-direction: column; gap: 16px; }
-.rb .draft-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; }
-.rb .draft-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.rb .draft-form input, .rb .draft-form select { height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 14px; min-width: 0; }
-.rb .compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.rb .draft-col { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.rb .draft-col h3 { margin: 0; font-size: 14px; font-weight: 600; }
-.rb .email-draft { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.rb .email-draft p { margin: 0; }
-.rb .email-draft .m { display: inline-block; width: 60px; color: var(--muted); font-size: 12px; }
-.rb .email-body { white-space: pre-wrap; padding-top: 6px; border-top: 1px solid var(--line); line-height: 1.6; }
-.rb .skip { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--ink-2); }
-.rb .cites { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.rb .cite { padding: 1px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 500; }
-.rb .cite.changed { background: var(--warn-soft); color: var(--warn); }
+.rb .rail-btn[aria-current="page"], .rb .rail-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.rb .drawer { position: absolute; top: 0; right: 88px; bottom: 0; z-index: 20; width: min(400px, calc(100% - 88px)); background: var(--card); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.10); display: flex; flex-direction: column; }
+/* Check page: input on the left, the answer on the right */
+.rb .check-page { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); }
+.rb .check-input { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 20px; padding: 32px 28px; background: var(--card); border-right: 1px solid var(--line); }
+.rb .check-input h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.rb .check-output { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 32px clamp(20px, 4vw, 56px); }
+.rb .check-output-inner { max-width: 820px; display: flex; flex-direction: column; gap: 20px; }
+.rb .check-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rb .recent { display: flex; flex-direction: column; gap: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.rb .recent h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.rb .recent ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rb .recent-item { width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.rb .recent-item:hover { background: var(--app); }
+.rb .recent-item[aria-current="true"] { background: var(--accent-soft); }
+.rb .recent-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb .recent-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.rb .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bar-muted); }
+.rb .dot.go { background: var(--go); }
+.rb .dot.change { background: var(--change); }
+.rb .dot.skip { background: var(--skip); }
+.rb .stale { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 13px; }
+.rb .mail-versions { display: flex; align-items: center; gap: 12px; }
+.rb .pager { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rb .pager .icon { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rb .pager .icon:hover:not([disabled]) { background: var(--card); }
+.rb .pager .icon[disabled] { opacity: 0.35; cursor: default; }
+.rb .check-empty { padding: 48px 24px; border: 1px dashed var(--line-2); border-radius: 14px; text-align: center; color: var(--ink-2); }
+.rb .check-empty p { margin: 4px 0; }
+.rb .jd { display: flex; flex-direction: column; gap: 8px; }
+.rb .jd label { font-size: 13px; font-weight: 500; }
+.rb .jd textarea { font: inherit; font-size: 13px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--app); color: var(--ink); resize: vertical; }
+.rb .jd-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rb .from-post { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 500; }
+.rb .q { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rb .q legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 500; }
+.rb .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.rb .choice { min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 13px; }
+.rb .choice[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 500; }
+
+/* Verdict: one slim strip, not a card */
+.rb .vstrip { --tone: var(--bar-muted); --tone-soft: var(--app); display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); box-shadow: inset 4px 0 0 var(--tone); }
+.rb .vstrip.go { --tone: var(--go); --tone-soft: var(--go-soft); }
+.rb .vstrip.change { --tone: var(--change); --tone-soft: var(--change-soft); }
+.rb .vstrip.skip { --tone: var(--skip); --tone-soft: var(--skip-soft); }
+.rb .vstrip-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.rb .vstrip h2 { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.35; flex: 1; min-width: 200px; }
+.rb .v-label { padding: 2px 10px; border-radius: 999px; background: var(--tone-soft); color: var(--tone); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.rb .vstrip p { margin: 0; font-size: 13px; color: var(--muted); }
+.rb .vstrip-meta b { color: var(--ink); font-weight: 600; }
+.rb .vstrip-meta .bounced { color: var(--skip); }
+.rb .vstrip-rules { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rb .cite { border: 0; cursor: pointer; padding: 2px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 500; }
+.rb .vstrip .instead { color: var(--ink-2); padding: 8px 12px; border-radius: 8px; background: var(--tone-soft); }
+.rb .vstrip .instead b { color: var(--tone); margin-right: 6px; }
+.rb .vstrip-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rb .write-btn { align-self: flex-start; }
+
+/* The email: a clean composer */
+.rb .mail { border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.04); overflow: hidden; }
+.rb .mail-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--line); background: var(--app); }
+.rb .mail-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.rb .mail-acts { display: flex; gap: 6px; }
+.rb .mail-fields { margin: 0; padding: 4px 20px; }
+.rb .mail-fields > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.rb .mail-fields dt { font-size: 13px; color: var(--muted); }
+.rb .mail-fields dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.rb .mail-fields .subject { font-weight: 600; }
+.rb .mail-body { padding: 20px; white-space: pre-wrap; font-size: 15px; line-height: 1.7; max-width: 64ch; }
+.rb .mail-why { padding: 12px 20px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.rb .why-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-size: 13px; }
+.rb .mail-why ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.rb .mail-why li .cite, .rb .mail-why li .pill { margin-left: 6px; font-size: 11px; }
 .rb .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
 .rb .drawer-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .rb .drawer-body { flex: 1; overflow: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
@@ -258,12 +315,10 @@
   .rb .decide .hint { flex-basis: 100%; margin: 0; text-align: left; max-width: none; -webkit-line-clamp: 1; }
 
   .rb .rail { position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; flex-direction: row; justify-content: space-around; gap: 0; padding: 4px 4px env(safe-area-inset-bottom, 0px); border-left: 0; border-top: 1px solid var(--line); }
-  .rb .rail-btn { width: auto; flex: 1; padding: 8px 0; }
+  .rb .rail-btn { width: auto; flex: 1; min-width: 0; padding: 8px 2px; font-size: 10px; }
   .rb .theme-wrap { margin: 0; flex: 1; display: flex; }
   .rb .theme-wrap .rail-btn { flex: 1; }
   .rb .theme-menu { position: fixed; right: 8px; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
-  .rb .compare { grid-template-columns: minmax(0, 1fr); }
-  .rb .drawer.wide { width: 100%; }
   .rb .drawer { position: fixed; top: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom, 0px)); width: 100%; z-index: 30; border-left: 0; box-shadow: none; }
 
   .rb .sheet-scrim { position: fixed; z-index: 40; }
@@ -272,6 +327,11 @@
   .rb .toast { position: fixed; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); width: max-content; max-width: calc(100% - 32px); }
   .rb .cost-panel { position: fixed; top: 60px; right: 16px; }
 
+  .rb .check-page { grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  .rb .check-input { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); padding: 20px 16px; }
+  .rb .check-output { overflow: visible; padding: 20px 16px; }
+  .rb .mail-body { padding: 16px; font-size: 14px; }
+  .rb .rail-sep { display: none; }
   .rb .welcome { padding: 28px 16px; }
   .rb .welcome h1 { font-size: 26px; }
   .rb .welcome-inner { grid-template-columns: minmax(0, 1fr); gap: 24px; }

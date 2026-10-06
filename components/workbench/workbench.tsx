@@ -6,7 +6,8 @@ import { api, ApiError, type EvidenceResponse, type Proposal, type WorkspaceStat
 import { plural, ruleName, VERDICT } from "./format";
 import { groupByRule, type RuleGroup } from "./groups";
 import { RuleReview, type Sheet } from "./rule-review";
-import { DrawerPanel, Rail, type Drawer, type Theme } from "./side-panels";
+import { CheckPage } from "./check-page";
+import { DrawerPanel, Rail, type Drawer, type Theme, type View } from "./side-panels";
 import { TopBar } from "./top-bar";
 import { useRun } from "./use-run";
 import "./rulebook.css";
@@ -28,6 +29,8 @@ export function Workbench() {
   const [sheet, setSheet] = useState<Sheet>();
   const [drawer, setDrawer] = useState<Drawer>();
   const [emailFocus, setEmailFocus] = useState<string>();
+  const [focusRule, setFocusRule] = useState<string>();
+  const [view, setView] = useState<View>("review");
   const [emails, setEmails] = useState<Record<string, EvidenceResponse>>({});
   const [toast, setToast] = useState<Toast>();
   const [settingUp, setSettingUp] = useState(false);
@@ -191,7 +194,7 @@ export function Workbench() {
         else setDrawer(undefined);
         return;
       }
-      if (sheet || e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, select, [contenteditable]")) return;
+      if (view !== "review" || sheet || e.metaKey || e.ctrlKey || e.altKey || t.closest("input, textarea, select, [contenteditable]")) return;
       if (!group) return;
       const i = groups.indexOf(group);
       const k = e.key.toLowerCase();
@@ -217,7 +220,7 @@ export function Workbench() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [group, groups, picked, sheet, locked, select, apply, combine]);
+  }, [view, group, groups, picked, sheet, locked, select, apply, combine]);
 
   if (loadError && !state) {
     return (
@@ -238,6 +241,16 @@ export function Workbench() {
         <Welcome state={state} settingUp={settingUp} onSetUp={setUp} onRun={runAnalyst} />
       ) : (
         <div className="body">
+          {view === "check" ? (
+            <CheckPage
+              state={state}
+              locked={locked}
+              onOpenRule={(id) => (setFocusRule(id), setDrawer("rules"))}
+              onSpent={() => void refresh()}
+              onProposed={(text) => (flash({ text }), void refresh())}
+            />
+          ) : (
+          <>
           <nav className="list" aria-label="Suggestions">
             <h2>{total ? `${plural(total, "suggestion")} for ${plural(groups.length, "rule")}` : "All caught up"}</h2>
             {running && <div className="checking-row"><span className="spin" aria-hidden />New suggestions will appear here</div>}
@@ -303,6 +316,8 @@ export function Workbench() {
               </div>
             </div>
           )}
+          </>
+          )}
 
           {drawer && (
             <DrawerPanel
@@ -317,9 +332,17 @@ export function Workbench() {
               locked={locked}
               onUndo={(sha) => void undo(sha)}
               onSpent={() => void refresh()}
+              focusRule={focusRule}
             />
           )}
-          <Rail open={drawer} onOpen={(d) => (setEmailFocus(undefined), setDrawer(d))} theme={theme} onTheme={pickTheme} />
+          <Rail
+            view={view}
+            onView={(v) => (setView(v), setDrawer(undefined))}
+            open={drawer}
+            onOpen={(d) => (setEmailFocus(undefined), setFocusRule(undefined), setDrawer(d))}
+            theme={theme}
+            onTheme={pickTheme}
+          />
         </div>
       )}
 

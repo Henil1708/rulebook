@@ -1,20 +1,24 @@
 "use client";
 // The right rail: Your rules, Emails, History and Activity, minimised until opened. Each opens a drawer
 // over the right side, so the page underneath doesn't move.
-import { Activity, BookOpen, Check, History, Mail, Monitor, Moon, PenLine, Sun, X } from "lucide-react";
+import { Activity, BookOpen, Check, History, ListChecks, Mail, Monitor, Moon, ShieldCheck, Sun, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceState } from "@/lib/workspace";
 import type { EvidenceResponse, Proposal } from "./api";
 import { groupLabel, marketName, plural, RESULT, ruleName, shortDate, when } from "./format";
-import { DraftPanel } from "./draft-panel";
 import { collapse } from "./narrate";
 import type { ActivityEvent } from "./use-run";
 
-export type Drawer = "rules" | "emails" | "history" | "activity" | "draft";
+export type Drawer = "rules" | "emails" | "history" | "activity";
+/** Whole pages, as opposed to drawers over them. */
+export type View = "review" | "check";
 
+const PAGES: [View, string, typeof BookOpen][] = [
+  ["review", "Suggestions", ListChecks],
+  ["check", "Check", ShieldCheck],
+];
 const RAIL: [Drawer, string, typeof BookOpen][] = [
   ["rules", "Your rules", BookOpen],
-  ["draft", "Draft", PenLine],
   ["emails", "Emails", Mail],
   ["history", "History", History],
   ["activity", "Activity", Activity],
@@ -23,7 +27,16 @@ const RAIL: [Drawer, string, typeof BookOpen][] = [
 export type Theme = "system" | "light" | "dark";
 const THEME: Record<Theme, [string, typeof Sun]> = { system: ["System", Monitor], light: ["Light", Sun], dark: ["Dark", Moon] };
 
-export function Rail({ open, onOpen, theme, onTheme }: { open?: Drawer; onOpen: (d?: Drawer) => void; theme: Theme; onTheme: (t: Theme) => void }) {
+interface RailProps {
+  view: View;
+  onView: (v: View) => void;
+  open?: Drawer;
+  onOpen: (d?: Drawer) => void;
+  theme: Theme;
+  onTheme: (t: Theme) => void;
+}
+
+export function Rail({ view, onView, open, onOpen, theme, onTheme }: RailProps) {
   const [themeLabel, ThemeIcon] = THEME[theme];
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -42,6 +55,13 @@ export function Rail({ open, onOpen, theme, onTheme }: { open?: Drawer; onOpen: 
   }, [menu]);
   return (
     <aside className="rail" aria-label="More">
+      {PAGES.map(([key, label, Icon]) => (
+        <button key={key} className="rail-btn" aria-current={view === key ? "page" : undefined} onClick={() => onView(key)}>
+          <Icon size={20} strokeWidth={1.8} aria-hidden />
+          {label}
+        </button>
+      ))}
+      <span className="rail-sep" aria-hidden />
       {RAIL.map(([key, label, Icon]) => (
         <button key={key} className="rail-btn" aria-pressed={open === key} onClick={() => onOpen(open === key ? undefined : key)}>
           <Icon size={20} strokeWidth={1.8} aria-hidden />
@@ -86,6 +106,8 @@ interface DrawerProps {
   onUndo: (sha: string) => void;
   /** After something that costs money, so the AI cost refreshes. */
   onSpent: () => void;
+  /** The rule whose details start expanded. */
+  focusRule?: string;
 }
 
 export function DrawerPanel(props: DrawerProps) {
@@ -96,9 +118,6 @@ export function DrawerPanel(props: DrawerProps) {
   if (drawer === "rules") {
     title = "Your rules";
     body = <RulesBody {...props} />;
-  } else if (drawer === "draft") {
-    title = "Draft an email";
-    body = <DraftPanel state={state} locked={props.locked} onSpent={props.onSpent} />;
   } else if (drawer === "emails") {
     title = props.focus ? `${plural(props.focus.check.n, "email")} ${groupLabel(props.focus.slice)}` : "Emails";
     body = props.focus ? <Emails p={props.focus} {...props} /> : <p className="small">Pick a suggestion to see the emails behind it.</p>;
@@ -129,7 +148,7 @@ export function DrawerPanel(props: DrawerProps) {
   }
 
   return (
-    <aside className={`drawer${drawer === "draft" ? " wide" : ""}`} role="dialog" aria-label={title}>
+    <aside className="drawer" role="dialog" aria-label={title}>
       <div className="drawer-head">
         <h2>{title}</h2>
         <button className="close" aria-label="Close" onClick={props.onClose}><X size={18} aria-hidden /></button>
@@ -163,8 +182,8 @@ function Emails({ p, emails, onNeedEmails }: DrawerProps & { p: Proposal }) {
 }
 
 /** Each rule, and on click where it came from: the change that last wrote it (git blame) and its trailers. */
-function RulesBody({ state, locked, onUndo }: DrawerProps) {
-  const [open, setOpen] = useState<string>();
+function RulesBody({ state, locked, onUndo, focusRule }: DrawerProps) {
+  const [open, setOpen] = useState<string | undefined>(focusRule);
   const backed = state.rules.filter((r) => r.origin?.n !== undefined).length;
   return (
     <>

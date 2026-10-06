@@ -1,10 +1,12 @@
 // Typed fetch helpers for the workbench. Every write sends JSON (the CSRF guard requires it).
 import type { FeedRow, SliceStats } from "@/lib/evidence";
-import type { DraftResult, Target } from "@/lib/agents/drafter";
+import type { EmailResult, PreflightResult } from "@/lib/agents/preflight";
+import type { JobPostAnswers, PreflightForm } from "@/lib/preflight";
+import type { CheckRecord, CheckSummary } from "@/lib/store/checks";
 import type { Proposal } from "@/lib/store/proposals";
 import type { WorkspaceState } from "@/lib/workspace";
 
-export type { DraftResult, FeedRow, Proposal, Target, WorkspaceState };
+export type { CheckRecord, CheckSummary, EmailResult, FeedRow, PreflightForm, PreflightResult, Proposal, WorkspaceState };
 
 export interface EvidenceResponse {
   rows: FeedRow[];
@@ -37,10 +39,15 @@ export const api = {
   dismiss: (ids: string[], reason: string) => post("/api/proposals/dismiss", { ids, reason }).then((r) => json<{ sha: string }>(r)),
   combine: (ids: string[], signal?: AbortSignal) =>
     fetch("/api/proposals/combine", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids }), signal }).then((r) => json<{ proposal: Proposal; costUsd: number }>(r)),
-  /** Every real email, to pick a company to draft for. */
-  allEmails: () => fetch("/api/evidence", { cache: "no-store" }).then((r) => json<EvidenceResponse>(r)),
-  draft: (target: Target, ref: string, signal?: AbortSignal) =>
-    fetch("/api/drafter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target, ref }), signal }).then((r) => json<DraftResult>(r)),
+  preflight: (form: PreflightForm, extra: { job_post?: string; role?: string; company_name?: string }) =>
+    post("/api/preflight", { ...form, ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v)) }).then((r) => json<PreflightResult & { checkId: string }>(r)),
+  checks: () => fetch("/api/checks", { cache: "no-store" }).then((r) => json<{ checks: CheckSummary[] }>(r)).then((r) => r.checks),
+  check: (id: string) => fetch(`/api/checks/${encodeURIComponent(id)}`, { cache: "no-store" }).then((r) => json<CheckRecord>(r)),
+  writeEmail: (form: PreflightForm, verdict: Pick<PreflightResult, "verdict" | "rule_ids" | "do_instead">, jobPost?: string, checkId?: string) =>
+    post("/api/preflight/email", { form, verdict, ...(jobPost ? { job_post: jobPost } : {}), ...(checkId ? { check_id: checkId } : {}) }).then((r) => json<EmailResult>(r)),
+  readJobPost: (jobPost: string) => post("/api/preflight/read", { job_post: jobPost }).then((r) => json<JobPostAnswers>(r)),
+  turnIntoRule: (form: PreflightForm, rule_text: string, headline: string) =>
+    post("/api/preflight/rule", { form, rule_text, headline }).then((r) => json<{ proposal: Proposal; reviewed: boolean }>(r)),
   undo: (sha: string) => post("/api/history/undo", { sha }).then((r) => json<{ sha: string; restored: string[] }>(r)),
   runAnalyst: (signal: AbortSignal) => fetch("/api/analyst/run", { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal }),
 };
