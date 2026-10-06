@@ -6,12 +6,14 @@ Two files. Never mix them up in the UI. Every row carries `source`.
 |---|---|---|---|
 | `evidence.real.json` | 142 | `gmail` | My real job outreach, Jun–Oct 2026, exported from my Gmail and anonymised |
 | `evidence.synthetic.json` | 45 | `synthetic` | Made-up future events (Oct–Nov 2026), used only to demo "new evidence arrives". Includes one deliberate trap row (`syn-trap`) |
+| `email-bodies.synthetic.json` | 185 | (made up) | **Sample** email bodies, one per sent email, from `scripts/generate_email_bodies.py` (seeded). They vary like real outreach but the outcome never shaped the text, so they carry no real signal. The UI labels drafts based on them as samples |
+| `email-bodies.local.json` | — | real | My real email bodies, anonymised. **Gitignored, never pushed.** Used instead of the samples when present |
 
 ## Anonymisation
 - **Company names and domains are pseudonyms** (`ValeWillow`, `valewillow.example`). The real names are not in this repo.
 - **Personal email addresses are removed.** A named person becomes `<person>@<pseudo>.example`. Role inboxes (`careers@`, `hr@`…) keep their local part because the *type* of inbox is the signal.
 - **Subjects keep the job title.** Brand names are replaced with `<company>` and my name with `<candidate>`.
-- **No email bodies are stored.**
+- **No real email bodies are stored in the repo.** Real bodies live only in the gitignored `email-bodies.local.json`.
 
 ## Schema (one row = one outreach attempt, or one inbound event)
 | Field | Meaning |

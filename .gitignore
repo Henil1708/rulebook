@@ -11,3 +11,6 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 .playwright-mcp/
+
+# Real email bodies: private, never pushed (see data/README.md)
+data/email-bodies.local.json
