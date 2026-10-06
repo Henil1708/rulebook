@@ -14,6 +14,8 @@ export interface HistoryItem {
   undoable: boolean;
   /** Cancelled later by an undo. */
   undone: boolean;
+  /** For the timeline filter. */
+  kind: "rule" | "dismiss" | "undo" | "start";
 }
 
 const ruleName = (id: string) => `Rule ${Number(id.slice(2))}`;
@@ -23,22 +25,23 @@ const TURNED_DOWN = /^memory\(analyst\): rejected (.+?) — (.*)$/;
 const count = (ids: string) => Number(/^(\d+) proposals/.exec(ids)?.[1] ?? 1);
 const many = (n: number, one: string, more = `${one}s`) => `${n} ${n === 1 ? one : more}`;
 
-function describe(c: Commit): Pick<HistoryItem, "title" | "detail" | "note"> {
+function describe(c: Commit): Pick<HistoryItem, "title" | "detail" | "note" | "kind"> {
   const rule = RULE.exec(c.subject);
   if (rule) {
     const t = c.trailers;
     const how = t.Combines ? `Merged from ${many(t.Combines.split(",").length, "suggestion")}.` : t["Edited-By"] ? "In your own words." : "";
     const based = t.N ? `Based on ${t.N} of your email${t.N === "1" ? "" : "s"}.` : "";
     return {
+      kind: "rule",
       title: `You ${VERB[rule[2]]} ${ruleName(rule[1])}`,
       detail: rule[2] === "retire" ? `It said: "${rule[3]}"` : `New wording: "${rule[3]}"`,
       note: [based, how].filter(Boolean).join(" ") || undefined,
     };
   }
   const down = TURNED_DOWN.exec(c.subject);
-  if (down) return { title: `You turned down ${many(count(down[1]), "suggestion")}`, detail: `Your reason: "${down[2]}"` };
-  if (/^init:/.test(c.subject)) return { title: "Your starting rules", detail: "The rules from your July plan, before any results." };
-  return { title: c.subject, detail: "" };
+  if (down) return { kind: "dismiss", title: `You turned down ${many(count(down[1]), "suggestion")}`, detail: `Your reason: "${down[2]}"` };
+  if (/^init:/.test(c.subject)) return { kind: "start", title: "Your starting rules", detail: "The rules from your July plan, before any results." };
+  return { kind: "rule", title: c.subject, detail: "" };
 }
 
 /** What an undo did, said from the operator's side. */
@@ -63,7 +66,7 @@ export function toHistory(log: Commit[]): HistoryItem[] {
   const reverted = new Set(log.flatMap((c) => [...c.body.matchAll(/This reverts commit ([0-9a-f]{40})/g)].map((m) => m[1])));
   return log.map((c) => {
     const undo = /^Revert "(.*)"$/.exec(c.subject);
-    if (undo) return { sha: c.sha, date: c.date, ...describeUndo(undo[1]), undoable: false, undone: false };
+    if (undo) return { sha: c.sha, date: c.date, ...describeUndo(undo[1]), kind: "undo", undoable: false, undone: false };
     const undone = reverted.has(c.sha);
     return { sha: c.sha, date: c.date, ...describe(c), undoable: /^(rule\(|memory\(analyst\))/.test(c.subject) && !undone, undone };
   });

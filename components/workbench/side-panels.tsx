@@ -1,7 +1,7 @@
 "use client";
 // The right rail: Your rules, Emails, History and Activity, minimised until opened. Each opens a drawer
 // over the right side, so the page underneath doesn't move.
-import { Activity, BookOpen, Check, History, Mail, Monitor, Moon, Sun, X } from "lucide-react";
+import { Activity, BookOpen, Check, History, ListChecks, Mail, Monitor, Moon, ShieldCheck, Sun, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceState } from "@/lib/workspace";
 import type { EvidenceResponse, Proposal } from "./api";
@@ -10,7 +10,13 @@ import { collapse } from "./narrate";
 import type { ActivityEvent } from "./use-run";
 
 export type Drawer = "rules" | "emails" | "history" | "activity";
+/** Whole pages, as opposed to drawers over them. */
+export type View = "review" | "check";
 
+const PAGES: [View, string, typeof BookOpen][] = [
+  ["review", "Suggestions", ListChecks],
+  ["check", "Check", ShieldCheck],
+];
 const RAIL: [Drawer, string, typeof BookOpen][] = [
   ["rules", "Your rules", BookOpen],
   ["emails", "Emails", Mail],
@@ -21,7 +27,16 @@ const RAIL: [Drawer, string, typeof BookOpen][] = [
 export type Theme = "system" | "light" | "dark";
 const THEME: Record<Theme, [string, typeof Sun]> = { system: ["System", Monitor], light: ["Light", Sun], dark: ["Dark", Moon] };
 
-export function Rail({ open, onOpen, theme, onTheme }: { open?: Drawer; onOpen: (d?: Drawer) => void; theme: Theme; onTheme: (t: Theme) => void }) {
+interface RailProps {
+  view: View;
+  onView: (v: View) => void;
+  open?: Drawer;
+  onOpen: (d?: Drawer) => void;
+  theme: Theme;
+  onTheme: (t: Theme) => void;
+}
+
+export function Rail({ view, onView, open, onOpen, theme, onTheme }: RailProps) {
   const [themeLabel, ThemeIcon] = THEME[theme];
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,6 +55,13 @@ export function Rail({ open, onOpen, theme, onTheme }: { open?: Drawer; onOpen: 
   }, [menu]);
   return (
     <aside className="rail" aria-label="More">
+      {PAGES.map(([key, label, Icon]) => (
+        <button key={key} className="rail-btn" aria-current={view === key ? "page" : undefined} onClick={() => onView(key)}>
+          <Icon size={20} strokeWidth={1.8} aria-hidden />
+          {label}
+        </button>
+      ))}
+      <span className="rail-sep" aria-hidden />
       {RAIL.map(([key, label, Icon]) => (
         <button key={key} className="rail-btn" aria-pressed={open === key} onClick={() => onOpen(open === key ? undefined : key)}>
           <Icon size={20} strokeWidth={1.8} aria-hidden />
@@ -82,6 +104,10 @@ interface DrawerProps {
   running: boolean;
   locked?: string;
   onUndo: (sha: string) => void;
+  /** After something that costs money, so the AI cost refreshes. */
+  onSpent: () => void;
+  /** The rule whose details start expanded. */
+  focusRule?: string;
 }
 
 export function DrawerPanel(props: DrawerProps) {
@@ -90,51 +116,14 @@ export function DrawerPanel(props: DrawerProps) {
   let body: React.ReactNode;
 
   if (drawer === "rules") {
-    const backed = state.rules.filter((r) => r.origin && !r.origin.initial).length;
     title = "Your rules";
-    body = (
-      <>
-        <p className="small">{backed} of {state.rules.length} backed by your results</p>
-        <div className="meter good"><i style={{ width: `${state.rules.length ? (backed / state.rules.length) * 100 : 0}%` }} /></div>
-        <ol className="mini">
-          {state.rules.map((r) => {
-            const o = r.origin;
-            const tag: [string, string] = !o || o.initial || o.n === undefined ? ["Untested", "plain"] : o.trial ? [`Trying out · ${plural(o.n, "email")}`, "try"] : o.n < 10 ? [`${plural(o.n, "email")} · weak`, "weak"] : [plural(o.n, "email"), "ok"];
-            return (
-              <li key={r.id} className="rule-row" title={o && !o.initial ? `Changed ${when(o.date)}` : "From your July plan"}>
-                <span className="rn">{ruleName(r.id)}</span>
-                <span>{r.text}</span>
-                <span className={`rtag ${tag[1]}`}>{tag[0]}</span>
-              </li>
-            );
-          })}
-        </ol>
-      </>
-    );
+    body = <RulesBody {...props} />;
   } else if (drawer === "emails") {
     title = props.focus ? `${plural(props.focus.check.n, "email")} ${groupLabel(props.focus.slice)}` : "Emails";
     body = props.focus ? <Emails p={props.focus} {...props} /> : <p className="small">Pick a suggestion to see the emails behind it.</p>;
   } else if (drawer === "history") {
     title = "What changed";
-    body = (
-      <>
-        <ol className="mini">
-          {state.history.map((h) => (
-            <li key={h.sha}>
-              <div className="top"><b>{h.title}{h.undone && <span className="rtag plain" style={{ marginLeft: 8 }}>Cancelled</span>}</b><span>{when(h.date)}</span></div>
-              {h.detail && <p className="hist-detail">{h.detail}</p>}
-              {h.note && <p className="fine">{h.note}</p>}
-              {h.undoable && (
-                <button className="btn sm" style={{ alignSelf: "flex-start" }} disabled={Boolean(props.locked)} title={props.locked} onClick={() => props.onUndo(h.sha)}>
-                  Undo
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-        <p className="fine">Undo cancels a change. Both stay here as a record.</p>
-      </>
-    );
+    body = <HistoryBody {...props} />;
   } else {
     title = props.running ? "This run" : "Last run";
     const last = state.spend.last;
@@ -188,6 +177,107 @@ function Emails({ p, emails, onNeedEmails }: DrawerProps & { p: Proposal }) {
           );
         })}
       </ol>
+    </>
+  );
+}
+
+/** Each rule, and on click where it came from: the change that last wrote it (git blame) and its trailers. */
+function RulesBody({ state, locked, onUndo, focusRule }: DrawerProps) {
+  const [open, setOpen] = useState<string | undefined>(focusRule);
+  const backed = state.rules.filter((r) => r.origin?.n !== undefined).length;
+  return (
+    <>
+      <p className="small">{backed} of {state.rules.length} backed by your results. Click a rule to see where it came from.</p>
+      <div className="meter good"><i style={{ width: `${state.rules.length ? (backed / state.rules.length) * 100 : 0}%` }} /></div>
+      <ol className="mini">
+        {state.rules.map((r) => {
+          const o = r.origin;
+          const tag: [string, string] = !o || o.initial || o.n === undefined ? ["Untested", "plain"] : o.trial ? [`Trying out · ${plural(o.n, "email")}`, "try"] : o.n < 10 ? [`${plural(o.n, "email")} · weak`, "weak"] : [plural(o.n, "email"), "ok"];
+          const h = o && state.history.find((x) => x.sha === o.sha);
+          const isOpen = open === r.id;
+          return (
+            <li key={r.id}>
+              <button className="rule-row rule-btn" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? undefined : r.id)}>
+                <span className="rn">{ruleName(r.id)}</span>
+                <span>{r.text}</span>
+                <span className={`rtag ${tag[1]}`}>{tag[0]}</span>
+              </button>
+              {isOpen && o && (
+                <div className="blame">
+                  {o.initial ? (
+                    <p>From your July plan. Not tested against results yet.</p>
+                  ) : (
+                    <>
+                      <p><b>{h?.title ?? "Changed"}</b> on {when(o.date)}{o.approvedBy ? ", approved by you" : ""}.</p>
+                      {o.n !== undefined && <p>Learned from {plural(o.n, "email")}{o.critique ? ` · ${plainCritique(o.critique)}` : ""}.</p>}
+                      {o.emails && o.emails.length > 0 && (
+                        <div className="chips">
+                          {o.emails.map((e) => {
+                            const [label, cls] = RESULT[e.outcome] ?? [e.outcome, "p-none"];
+                            return <span key={e.id} className={`pill ${cls}`} title={label}>{e.company}</span>;
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {o.restoredAt && <p className="fine">Brought back when you cancelled a later change on {when(o.restoredAt)}.</p>}
+                  <p className="fine">Saved as change {o.sha.slice(0, 7)}</p>
+                  {h?.undoable && (
+                    <button className="btn sm" style={{ alignSelf: "flex-start" }} disabled={Boolean(locked)} title={locked} onClick={() => onUndo(o.sha)}>
+                      Undo this change
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </>
+  );
+}
+
+/** "caution (0.70) — skeptic" → "reviewer unsure, 70% sure". */
+function plainCritique(c: string): string {
+  const m = /^(\w+) \(([\d.]+)\)/.exec(c);
+  const v: Record<string, string> = { support: "reviewer agreed", caution: "reviewer unsure", oppose: "reviewer disagreed" };
+  return m ? `${v[m[1]] ?? m[1]}, ${Math.round(Number(m[2]) * 100)}% sure` : c;
+}
+
+const FILTERS: [string, string, (h: WorkspaceState["history"][number]) => boolean][] = [
+  ["all", "All", () => true],
+  ["rule", "Rule changes", (h) => h.kind === "rule"],
+  ["dismiss", "Turned down", (h) => h.kind === "dismiss"],
+  ["undo", "Cancelled", (h) => h.kind === "undo" || h.undone],
+];
+
+function HistoryBody({ state, locked, onUndo }: DrawerProps) {
+  const [filter, setFilter] = useState("all");
+  const keep = FILTERS.find((f) => f[0] === filter)![2];
+  const items = state.history.filter(keep);
+  return (
+    <>
+      <div className="filter-chips" role="group" aria-label="Show">
+        {FILTERS.map(([key, label]) => (
+          <button key={key} className="fchip" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
+        ))}
+      </div>
+      <ol className="mini">
+        {items.map((h) => (
+          <li key={h.sha}>
+            <div className="top"><b>{h.title}{h.undone && <span className="rtag plain" style={{ marginLeft: 8 }}>Cancelled</span>}</b><span>{when(h.date)}</span></div>
+            {h.detail && <p className="hist-detail">{h.detail}</p>}
+            {h.note && <p className="fine">{h.note}</p>}
+            {h.undoable && (
+              <button className="btn sm" style={{ alignSelf: "flex-start" }} disabled={Boolean(locked)} title={locked} onClick={() => onUndo(h.sha)}>
+                Undo
+              </button>
+            )}
+          </li>
+        ))}
+        {!items.length && <li><p>Nothing here yet.</p></li>}
+      </ol>
+      <p className="fine">Undo cancels a change. Both stay here as a record.</p>
     </>
   );
 }
