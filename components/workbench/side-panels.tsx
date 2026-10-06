@@ -165,7 +165,7 @@ function Emails({ p, emails, onNeedEmails }: DrawerProps & { p: Proposal }) {
 /** Each rule, and on click where it came from: the change that last wrote it (git blame) and its trailers. */
 function RulesBody({ state, locked, onUndo }: DrawerProps) {
   const [open, setOpen] = useState<string>();
-  const backed = state.rules.filter((r) => r.origin && !r.origin.initial).length;
+  const backed = state.rules.filter((r) => r.origin?.n !== undefined).length;
   return (
     <>
       <p className="small">{backed} of {state.rules.length} backed by your results. Click a rule to see where it came from.</p>
@@ -186,7 +186,7 @@ function RulesBody({ state, locked, onUndo }: DrawerProps) {
               {isOpen && o && (
                 <div className="blame">
                   {o.initial ? (
-                    <p>From your July plan, {when(o.date)}. Not tested against results yet.</p>
+                    <p>From your July plan. Not tested against results yet.</p>
                   ) : (
                     <>
                       <p><b>{h?.title ?? "Changed"}</b> on {when(o.date)}{o.approvedBy ? ", approved by you" : ""}.</p>
@@ -201,6 +201,7 @@ function RulesBody({ state, locked, onUndo }: DrawerProps) {
                       )}
                     </>
                   )}
+                  {o.restoredAt && <p className="fine">Brought back when you cancelled a later change on {when(o.restoredAt)}.</p>}
                   <p className="fine">Saved as change {o.sha.slice(0, 7)}</p>
                   {h?.undoable && (
                     <button className="btn sm" style={{ alignSelf: "flex-start" }} disabled={Boolean(locked)} title={locked} onClick={() => onUndo(o.sha)}>

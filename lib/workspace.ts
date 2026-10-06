@@ -2,7 +2,7 @@
 import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { isSend, loadEvidence, stats, type SliceStats } from "./evidence";
-import { GitService, lockBusy } from "./git/GitService";
+import { GitService, lockBusy, type Commit } from "./git/GitService";
 import { toHistory, type HistoryItem } from "./history";
 import { AGENT_DIR, STORE_DIR, WORKSPACE } from "./paths";
 import { ReviewError, RULES_PATH } from "./review";
@@ -37,6 +37,8 @@ export interface RuleOrigin {
   approvedBy?: string;
   /** Applied on an early sign (an interested reply in a small group): a rule being tried out. */
   trial?: boolean;
+  /** Set when an undo brought this wording back: when it was restored. */
+  restoredAt?: string;
   /** The evidence rows the change cites, as the UI shows them. */
   emails?: { id: string; company: string; outcome: string }[];
 }
@@ -82,8 +84,29 @@ export async function workspaceState(): Promise<WorkspaceState> {
   const initSha = log.at(-1)?.sha;
 
   const rowsById = new Map(loadEvidence({ synthetic: true }).map((e) => [e.id, e]));
-  const rules = parseRules(readFileSync(join(AGENT_DIR, RULES_PATH), "utf8")).map((r): RuleView => {
-    const c = commits.get(shaByLine.get(`- [${r.id}] ${r.text}`) ?? "");
+  // When an undo (git revert) restored a line, blame points at the revert. Look through it to the commit
+  // that first wrote that wording: blame the file as it was just before the reverted commit.
+  const blameAt = new Map<string, Promise<Map<string, string>>>();
+  const blameBefore = (sha: string) => {
+    if (!blameAt.has(sha)) blameAt.set(sha, git.blame(RULES_PATH, `${sha}^`).then((b) => new Map(b.map((l) => [l.text.trim(), l.sha]))).catch(() => new Map()));
+    return blameAt.get(sha)!;
+  };
+  async function writer(line: string): Promise<{ c?: Commit; restoredAt?: string }> {
+    let c = commits.get(shaByLine.get(line) ?? "");
+    let restoredAt: string | undefined;
+    for (let hops = 0; c && hops < 5; hops++) {
+      const reverted = /This reverts commit ([0-9a-f]{40})/.exec(c.body)?.[1];
+      if (!reverted) break;
+      restoredAt ??= c.date;
+      c = commits.get((await blameBefore(reverted)).get(line) ?? "");
+    }
+    return { c, restoredAt };
+  }
+
+  const parsed = parseRules(readFileSync(join(AGENT_DIR, RULES_PATH), "utf8"));
+  const writers = await Promise.all(parsed.map((r) => writer(`- [${r.id}] ${r.text}`)));
+  const rules = parsed.map((r, i): RuleView => {
+    const { c, restoredAt } = writers[i];
     if (!c) return r;
     const t = c.trailers;
     return {
@@ -93,6 +116,7 @@ export async function workspaceState(): Promise<WorkspaceState> {
         date: c.date,
         subject: c.subject,
         initial: c.sha === initSha,
+        ...(restoredAt ? { restoredAt } : {}),
         ...(t.N ? { n: Number(t.N) } : {}),
         ...(t.Evidence ? { evidence: t.Evidence.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
         ...(t.Evidence
