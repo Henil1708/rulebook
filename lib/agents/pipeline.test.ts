@@ -15,7 +15,7 @@ const tmp = await vi.hoisted(async () => {
 vi.mock("../paths", () => ({ WORKSPACE: tmp.root, AGENT_DIR: tmp.agent, STORE_DIR: tmp.store }));
 
 type Script = (call: (name: string, args: unknown) => Promise<string>, opts: QueryOptions) => Promise<void>;
-const script: { analyst: Script; skeptic: Script } = { analyst: async () => {}, skeptic: async () => {} };
+const script: { analyst: Script; skeptic: Script; draft: string } = { analyst: async () => {}, skeptic: async () => {}, draft: "" };
 const order: string[] = [];
 
 vi.mock("@open-gitagent/gitagent", async (importOriginal) => {
@@ -23,6 +23,12 @@ vi.mock("@open-gitagent/gitagent", async (importOriginal) => {
   return {
     ...real,
     query(opts: QueryOptions) {
+      if (opts.dir === tmp.agent) {
+        // The Drafter (root agent): no tools, its answer is the assistant text.
+        order.push("drafter");
+        const msgs: GCMessage[] = [{ type: "assistant", content: script.draft, model: "fake", provider: "fake", stopReason: "stop" }];
+        return { async *[Symbol.asyncIterator]() { yield* msgs; }, costs: () => ({ totalCostUsd: 0.0005, totalInputTokens: 1, totalOutputTokens: 1, totalRequests: 1, startTime: 0, modelUsage: {} }) };
+      }
       const agent = opts.dir!.endsWith("skeptic") ? "skeptic" : "analyst";
       const msgs: GCMessage[] = [];
       const call = async (name: string, args: unknown) => {
@@ -54,6 +60,7 @@ vi.mock("@open-gitagent/gitagent", async (importOriginal) => {
 
 const { runAnalyst } = await import("./analyst");
 const { runSkeptic } = await import("./skeptic");
+const { combineProposals } = await import("./combine");
 const { proposalStore } = await import("../store/proposals");
 
 const window = { from: "2026-07-12", to: "2026-07-31" };
@@ -62,7 +69,7 @@ const slice = (filter: Filter) => {
   const s = sliceStats(july, filter);
   return { filter, n: s.n, ids: s.rows.slice(0, 2).map((r) => r.id) };
 };
-const small = slice({ market: "UK", inbox_type: "careers_inbox" });
+const small = slice({ company_stage: "startup", inbox_type: "careers_inbox" }); // 6 sends, 1 interested reply: an early sign
 const big = slice({ market: { not: "IN" }, inbox_type: "named_person" });
 const propose = (s: ReturnType<typeof slice>, text: string) => ({
   op: "add", rule_text: text, evidence_ids: s.ids, slice: s.filter, n: s.n, metric: "see the slice", rationale: "because the data says so", confidence: 0.9,
@@ -97,6 +104,16 @@ describe("Analyst → Skeptic pipeline", () => {
     expect(order).toEqual(["analyst", "skeptic:P-001", "skeptic:P-002"]);
     expect(result.skeptic.map((s) => [s.proposalId, s.status])).toEqual([["P-001", "done"], ["P-002", "done"]]);
     expect(result.totalCostUsd).toBeCloseTo(0.003);
+  });
+
+  it("saves the run's cost so the total survives a refresh", async () => {
+    await runAnalyst({ window });
+    await runAnalyst({ window, critique: false });
+    const { runLog } = await import("../store/runs");
+    const spend = runLog(tmp.store).spend();
+    expect(spend.runs).toBe(2);
+    expect(spend.totalCostUsd).toBeCloseTo(0.003 + 0.001);
+    expect(spend.last).toMatchObject({ kind: "analyst", status: "done", window });
   });
 
   it("code overrides 'support' on the small slice and leaves the big one alone", async () => {
@@ -154,3 +171,39 @@ describe("Analyst → Skeptic pipeline", () => {
   });
 });
 
+describe("combineProposals", () => {
+  const reword = (s: ReturnType<typeof slice>, text: string) => ({ ...propose(s, text), op: "modify", rule_id: "R-002" });
+
+  it("drafts one wording from the picked suggestions, stores it as a draft, and has the Skeptic review the union", async () => {
+    script.analyst = async (call) => {
+      await call("propose_rule_change", reword(small, "Send to the careers@ inbox at UK companies."));
+      await call("propose_rule_change", reword(big, "Never guess named addresses abroad; use careers@."));
+    };
+    await runAnalyst({ window, critique: false });
+    script.draft = '"Send to the careers@ inbox first; never guess named addresses abroad."';
+    order.length = 0;
+
+    const { proposal, costUsd } = await combineProposals(["P-001", "P-002"]);
+    expect(order).toEqual(["drafter", `skeptic:${proposal.id}`]);
+    expect(proposal).toMatchObject({
+      status: "draft",
+      rule_id: "R-002",
+      rule_text: "Send to the careers@ inbox first; never guess named addresses abroad.",
+      combines: ["P-001", "P-002"],
+      check: { n: small.n + big.n },
+      critique: { verdict: "support" },
+    });
+    expect(costUsd).toBeCloseTo(0.0015);
+    // Drafts never show up as waiting suggestions.
+    expect(proposalStore(tmp.store).list().filter((p) => p.status === "pending").map((p) => p.id)).toEqual(["P-001", "P-002"]);
+  });
+
+  it("refuses suggestions for different rules", async () => {
+    script.analyst = async (call) => {
+      await call("propose_rule_change", reword(small, "Send to the careers@ inbox at UK companies."));
+      await call("propose_rule_change", { ...reword(big, "Never guess named addresses abroad."), rule_id: "R-003" });
+    };
+    await runAnalyst({ window, critique: false });
+    await expect(combineProposals(["P-001", "P-002"])).rejects.toMatchObject({ status: 400 });
+  });
+});

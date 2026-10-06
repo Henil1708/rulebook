@@ -4,14 +4,16 @@ import { join } from "node:path";
 import { filterEvidence, loadEvidence, sliceStats } from "../evidence";
 import { withLock } from "../git/GitService";
 import { AGENT_DIR, STORE_DIR } from "../paths";
-import { renderSlice } from "../review";
+import { proposalRows, renderSlice } from "../review";
 import { proposalStore, type Critique } from "../store/proposals";
+import { runLog } from "../store/runs";
 import { MIN_N_FOR_SUPPORT, submitCritiqueTool } from "../tools/critique";
 import { readEvidenceTool } from "../tools/readEvidence";
 import { runAgent, type AgentRunResult, type OnEvent } from "./run";
 
 export const SKEPTIC_TOOLS = ["read_evidence", "submit_critique"];
 const MAX_TURNS = 4;
+const MAX_TURNS_COMBINED = 6; // a combined suggestion spans several groups of emails: more to read
 
 export interface SkepticResult extends AgentRunResult {
   proposalId: string;
@@ -25,27 +27,31 @@ export async function skepticUnlocked(proposalId: string, opts: { signal?: Abort
   const p = store.get(proposalId);
   if (!p) throw new Error(`${proposalId} not found`);
   const runId = randomUUID();
-  const rows = filterEvidence(loadEvidence({ synthetic: p.synthetic }), {}, p.window ?? {});
-  const base = sliceStats(rows);
+  const all = loadEvidence({ synthetic: p.synthetic });
+  // A combined suggestion has no single slice: the Skeptic reads exactly the union of its parts' emails.
+  const members = p.combines?.map((id) => store.get(id)).filter((m) => m !== undefined) ?? [];
+  const rows = p.combines ? proposalRows(all, p, store.get) : filterEvidence(all, {}, p.window ?? {});
+  const base = sliceStats(p.combines ? all : rows);
 
   const proposal = {
     id: p.id,
     change: `${p.op}${p.rule_id ? ` ${p.rule_id}` : ""}`,
     rule_text: p.rule_text ?? "(retire: no new text)",
-    slice: renderSlice(p.slice),
-    slice_filter: p.slice,
+    slice: p.combines ? `union of: ${members.map((m) => renderSlice(m.slice)).join(" OR ")} (read_evidence with no filter returns exactly these rows)` : renderSlice(p.slice),
+    slice_filter: p.combines ? {} : p.slice,
     checked_by_server: p.check,
     analyst_claim: { n: p.n, metric: p.metric, confidence: p.confidence },
     evidence_ids: p.evidence_ids,
     rationale: p.rationale,
   };
   const prompt = [
-    `Review this proposed rule change. Evidence window: ${p.window ? `${p.window.from} to ${p.window.to}` : "all real evidence"}${p.synthetic ? " (includes synthetic rows)" : ""}.`,
+    `Review this proposed rule change. Evidence: ${p.window ? `${p.window.from} to ${p.window.to}` : `all results, sent ${span(rows)}`}${p.synthetic ? " (includes synthetic rows)" : ""}. read_evidence already covers exactly this; do not pass a window.`,
+    ...(p.combines ? [`It combines ${p.combines.length} earlier suggestions into one wording. Judge the combined wording against the combined emails.`] : []),
     `Baseline over that window: n=${base.n}, ${base.humanReplies} human replies (rate ${base.rate.toFixed(3)}), ${base.bounces} bounces.`,
     `Proposal: ${JSON.stringify(proposal)}`,
     "Check: does the slice's outcome really support the change, in the direction claimed? Sample size, confounders (same company, the 12 Jul mass send, market vs inbox type, duplicates), rejections counted as replies, synthetic rows.",
     `Use read_evidence with the slice filter or nearby slices if you need to. A slice with fewer than ${MIN_N_FOR_SUPPORT} sends can never get "support".`,
-    "Then call submit_critique exactly once.",
+    `Then call submit_critique exactly once, within ${p.combines ? MAX_TURNS_COMBINED : MAX_TURNS} steps in total.`,
   ].join("\n");
 
   let result: AgentRunResult;
@@ -56,7 +62,7 @@ export async function skepticUnlocked(proposalId: string, opts: { signal?: Abort
       prompt,
       tools: [readEvidenceTool(() => rows), submitCritiqueTool({ proposalId, runId, store })],
       allowedTools: SKEPTIC_TOOLS,
-      maxTurns: MAX_TURNS,
+      maxTurns: p.combines ? MAX_TURNS_COMBINED : MAX_TURNS,
       signal: opts.signal,
       onEvent: opts.onEvent,
     });
@@ -74,5 +80,15 @@ export async function skepticUnlocked(proposalId: string, opts: { signal?: Abort
 }
 
 export function runSkeptic(proposalId: string, opts: { signal?: AbortSignal; onEvent?: OnEvent } = {}): Promise<SkepticResult> {
-  return withLock(() => skepticUnlocked(proposalId, opts));
+  return withLock(async () => {
+    const r = await skepticUnlocked(proposalId, opts);
+    runLog(STORE_DIR).add({ kind: "skeptic", status: r.status, costUsd: r.costs.totalCostUsd, proposalIds: [proposalId] });
+    return r;
+  });
+}
+
+/** "2026-07-12 to 2026-10-05": the dates the rows were sent, so the model never has to guess a window. */
+function span(rows: { sent_at: string | null }[]): string {
+  const days = rows.map((r) => r.sent_at?.slice(0, 10)).filter((d): d is string => Boolean(d)).sort();
+  return days.length ? `${days[0]} to ${days.at(-1)}` : "no dates";
 }

@@ -38,9 +38,23 @@ describe("propose", () => {
   it("stores a valid proposal as pending with a server-side check of the slice", () => {
     const p = propose(ctx, good);
     expect(p).toMatchObject({ id: "P-001", status: "pending", run_id: "run-1", op: "add", n: slice.n });
-    expect(p.check).toEqual({ n: slice.n, humanReplies: slice.humanReplies, bounces: slice.bounces });
+    expect(p.check).toEqual({ n: slice.n, humanReplies: slice.humanReplies, bounces: slice.bounces, positive: 0 });
+    expect(p.evidence_level).toBe("strong");
     expect(store.list()).toHaveLength(1);
     expect(JSON.parse(readFileSync(join(dir, "proposals.json"), "utf8"))[0].id).toBe("P-001");
+  });
+
+  it("only lets through strong evidence or an interested reply; making no suggestion is fine", () => {
+    const pick = (filter: Record<string, unknown>) => {
+      const s = sliceStats(july, filter as never);
+      return { ...good, slice: filter, n: s.n, evidence_ids: s.rows.slice(0, 1).map((r) => r.id) };
+    };
+    // 6 emails, but one interested reply: an early sign worth trying.
+    expect(propose(ctx, pick({ company_stage: "startup", inbox_type: "careers_inbox" })).evidence_level).toBe("early");
+    // 3 emails, one rejection: nothing to go on.
+    expect(() => propose(ctx, pick({ market: "UK", inbox_type: "careers_inbox" }))).toThrow(/not enough evidence.*Making no suggestion is a good outcome/);
+    // 30 emails, but no clear difference and no interested reply.
+    expect(() => propose(ctx, pick({ duplicate_of_earlier: true }))).toThrow(/not enough evidence/);
   });
 
   it("numbers proposals across runs", () => {

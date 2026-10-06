@@ -2,7 +2,7 @@
 import { query, type GCMessage, type GCToolDefinition, type SessionCosts } from "@open-gitagent/gitagent";
 import { createGuard } from "./hooks";
 
-export type AgentName = "analyst" | "skeptic";
+export type AgentName = "analyst" | "skeptic" | "drafter";
 export type RunStatus = "done" | "aborted" | "timeout" | "turn_limit" | "error";
 export type OnEvent = (m: GCMessage, agent: AgentName) => void;
 
