@@ -166,6 +166,13 @@
 .rb .mini .top { display: flex; justify-content: space-between; gap: 8px; }
 .rb .mini .top span, .rb .mini p { margin: 0; color: var(--muted); }
 .rb .mini .hist-detail { color: var(--ink-2); }
+.rb .rule-btn { width: 100%; text-align: left; border: 0; background: none; padding: 0; cursor: pointer; font-size: 13px; }
+.rb .blame { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--app); display: flex; flex-direction: column; gap: 6px; }
+.rb .blame p { margin: 0; color: var(--ink-2); }
+.rb .blame .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.rb .filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.rb .fchip { height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2); cursor: pointer; font-size: 12px; }
+.rb .fchip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .rb .rule-row { display: grid !important; grid-template-columns: 52px minmax(0, 1fr); gap: 2px 8px; }
 .rb .rule-row .rn { color: var(--muted); }
 .rb .rtag { grid-column: 2; justify-self: start; font-size: 11px; padding: 1px 8px; border-radius: 999px; }
