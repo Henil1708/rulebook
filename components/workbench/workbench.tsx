@@ -316,6 +316,7 @@ export function Workbench() {
               running={running}
               locked={locked}
               onUndo={(sha) => void undo(sha)}
+              onSpent={() => void refresh()}
             />
           )}
           <Rail open={drawer} onOpen={(d) => (setEmailFocus(undefined), setDrawer(d))} theme={theme} onTheme={pickTheme} />

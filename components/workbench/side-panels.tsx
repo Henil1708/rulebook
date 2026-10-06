@@ -1,18 +1,20 @@
 "use client";
 // The right rail: Your rules, Emails, History and Activity, minimised until opened. Each opens a drawer
 // over the right side, so the page underneath doesn't move.
-import { Activity, BookOpen, Check, History, Mail, Monitor, Moon, Sun, X } from "lucide-react";
+import { Activity, BookOpen, Check, History, Mail, Monitor, Moon, PenLine, Sun, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { WorkspaceState } from "@/lib/workspace";
 import type { EvidenceResponse, Proposal } from "./api";
 import { groupLabel, marketName, plural, RESULT, ruleName, shortDate, when } from "./format";
+import { DraftPanel } from "./draft-panel";
 import { collapse } from "./narrate";
 import type { ActivityEvent } from "./use-run";
 
-export type Drawer = "rules" | "emails" | "history" | "activity";
+export type Drawer = "rules" | "emails" | "history" | "activity" | "draft";
 
 const RAIL: [Drawer, string, typeof BookOpen][] = [
   ["rules", "Your rules", BookOpen],
+  ["draft", "Draft", PenLine],
   ["emails", "Emails", Mail],
   ["history", "History", History],
   ["activity", "Activity", Activity],
@@ -82,6 +84,8 @@ interface DrawerProps {
   running: boolean;
   locked?: string;
   onUndo: (sha: string) => void;
+  /** After something that costs money, so the AI cost refreshes. */
+  onSpent: () => void;
 }
 
 export function DrawerPanel(props: DrawerProps) {
@@ -92,6 +96,9 @@ export function DrawerPanel(props: DrawerProps) {
   if (drawer === "rules") {
     title = "Your rules";
     body = <RulesBody {...props} />;
+  } else if (drawer === "draft") {
+    title = "Draft an email";
+    body = <DraftPanel state={state} locked={props.locked} onSpent={props.onSpent} />;
   } else if (drawer === "emails") {
     title = props.focus ? `${plural(props.focus.check.n, "email")} ${groupLabel(props.focus.slice)}` : "Emails";
     body = props.focus ? <Emails p={props.focus} {...props} /> : <p className="small">Pick a suggestion to see the emails behind it.</p>;
@@ -122,7 +129,7 @@ export function DrawerPanel(props: DrawerProps) {
   }
 
   return (
-    <aside className="drawer" role="dialog" aria-label={title}>
+    <aside className={`drawer${drawer === "draft" ? " wide" : ""}`} role="dialog" aria-label={title}>
       <div className="drawer-head">
         <h2>{title}</h2>
         <button className="close" aria-label="Close" onClick={props.onClose}><X size={18} aria-hidden /></button>
