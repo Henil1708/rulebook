@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { refuseCrossSite } from "@/lib/http";
 import { acceptProposal } from "@/lib/review";
-import { errorResponse, workspace } from "@/lib/workspace";
+import { assertNotBusy, errorResponse, workspace } from "@/lib/workspace";
 
 export const runtime = "nodejs";
 
@@ -16,6 +16,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/proposals/[id]/
   const body = Body.safeParse((await req.json().catch(() => ({}))) ?? {});
   if (!body.success) return Response.json({ error: "body must be { text?: string }" }, { status: 400 });
   try {
+    assertNotBusy();
     return Response.json(await acceptProposal(workspace(), id, body.data.text));
   } catch (err) {
     return errorResponse(err);
