@@ -249,4 +249,8 @@ docs/                     spike notes, screenshots
 
 ## Out of scope
 
-Sending email · job search or scraping · live Gmail sync · multiple users or auth · hosting.
+Sending email · job search or scraping · live Gmail sync · multiple users or auth.
+
+## Hosted demo
+
+There is a hosted demo on Railway, built from the `Dockerfile`. The workspace repo lives on a persistent volume at `/app/workspace`, so rules and their history survive restarts. `RULEBOOK_BUDGET_USD` is set low to cap AI spend. It is a shared, single-user demo: there is no login, and everyone who opens it sees and changes the same rulebook.
